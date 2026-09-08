@@ -2,7 +2,7 @@
 
 Planning handoff for a follow-up model (SOL / GPT 5.6). **Plan next steps; do not treat this as an implementation brief.** Verify anything you act on against the tip commit below.
 
-Generated from tip inspection on **2026-09-08** against branch `cursor/audit-safety-gates-d1d1` @ `6bc79f6`.
+Generated from tip inspection on **2026-09-08** against branch `cursor/audit-safety-gates-d1d1`. Code/audit verification (vitest, typecheck, live `/api/state`) measured on `6bc79f6`; subsequent commits on this branch that only touch docs do not change that code tip.
 
 ---
 
@@ -353,5 +353,6 @@ Anti-fabrication list for the follow-up planner and any downstream docs:
 **Demo URL:** [http://localhost:4317](http://localhost:4317)  
 **Mode:** PAPER · LIVE broadcasting disabled  
 **Source of truth branch:** `cursor/audit-safety-gates-d1d1`  
-**Tip commit at handoff authoring:** `6bc79f6f002cda890b5114b3c848fcf93375e8ce`  
+**Verified audit code tip:** `6bc79f6f002cda890b5114b3c848fcf93375e8ce`  
+**This handoff commit:** see `git log -1 -- docs/NEXT-STEPS-HANDOFF.md` on the branch (docs-only; same code as verified tip)  
 **Follow-up role:** plan next steps from this document; re-verify commands before implementation.
