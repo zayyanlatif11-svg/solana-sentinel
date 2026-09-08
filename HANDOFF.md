@@ -11,7 +11,7 @@
 - Next.js research terminal (institutional aesthetic, DEMO banner, NAV, feed, provenance, ledger, events)
 - Supabase/Postgres SQL migration + in-memory persistence fallback
 - Vitest suite (29 tests), GitHub Actions CI, SECURITY + threat model + methodology docs
-- Safety gates: LIVE remapped to PAPER; `canBroadcast: false`; multi-env unlock unused
+- Safety gates: LIVE remapped to PAPER; `canBroadcast: false`; `isLiveTradingAllowed()` always false in V1
 
 ## WHAT ACTUALLY RUNS
 
@@ -39,6 +39,7 @@ Coverage includes: policy/token-risk/risk rejection, signals/scoring, paper fill
 ## BUILD RESULTS
 
 ```text
+pnpm run typecheck                 → success (after HeadersInit / noUncheckedIndexedAccess fixes)
 pnpm --filter @sat/web run build   → success (Next.js 16.3.4)
 pnpm --filter @sat/web run lint    → success (eslint flat config)
 bash scripts/secret-scan.sh        → clean
@@ -46,14 +47,18 @@ bash scripts/secret-scan.sh        → clean
 
 ## SCREENSHOTS / DEMO
 
+![Dashboard DEMO](./docs/screenshots/dashboard-demo.png)
+
 Open [http://localhost:4317](http://localhost:4317).
 
-Verified via API against the running server:
+Verified via API + headless Chrome screenshot against the running server:
 
+- UI banner `DEMO / PAPER ONLY` + per-candidate `DEMO` pills
 - DEMO candidates labeled `isDemo: true`
 - `SCAMX` → policy `REJECTED` + token-risk `HIGH_RISK` + risk `REJECT`
-- Paper execute on approved `WIF` → `FILLED`, `canBroadcast: false`
-- Jupiter quote returned `provider: "jupiter"`, `isDemo: false` (lite API reachable in this environment)
+- Paper execute on approved proposal → `FILLED`, `canBroadcast: false`, plan `mode: PAPER`
+- `isLiveTradingAllowed()` always `false` in V1 (env unlock trio unused)
+- Jupiter quote may return live lite quotes (`provider: "jupiter"`) or demo fallback; never broadcast
 - Experiment `demo-paper-replay-v1` stored with baseline comparisons
 
 ## ARCHITECTURE
@@ -74,8 +79,9 @@ See [docs/architecture.md](./docs/architecture.md) and root [README.md](./README
 - Signal features are snapshot-based (not full OHLCV histories)
 - Token-2022 extension decode via Helius is partial
 - Experiment UI may include labeled demo equity paths — **not live performance claims**
-- Playwright UI automation not wired (no computerUse tool in this agent session)
+- Playwright UI automation not wired; dashboard verified with headless Chrome screenshot
 - Next.js auto-generated `AGENTS.md` / `CLAUDE.md` may appear under `apps/web`
+- `isLiveTradingAllowed()` hard-returns `false` even if README unlock env vars are set
 
 ## MISSING CREDENTIALS
 
@@ -107,4 +113,4 @@ Optional (platform continues with labeled fallbacks):
 
 **Demo URL:** [http://localhost:4317](http://localhost:4317)  
 **Mode:** PAPER · LIVE broadcasting disabled  
-**Branch:** `main` (committed & pushed)
+**Branch:** `cursor/final-qa-fixes-6a3e`

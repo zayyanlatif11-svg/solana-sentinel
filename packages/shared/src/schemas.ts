@@ -409,10 +409,11 @@ export function assertNotLiveBroadcast(mode: OperatingMode): void {
   }
 }
 
+/**
+ * Live broadcast unlock check.
+ * Always false in V1: env unlock vars in README are reserved for a future audited path.
+ * Do not flip this until broadcast is implemented and independently reviewed.
+ */
 export function isLiveTradingAllowed(): boolean {
-  return (
-    process.env.ALLOW_LIVE_TRADING === "true" &&
-    process.env.OPERATING_MODE === "LIVE" &&
-    process.env.LIVE_BROADCAST_UNLOCK === "I_UNDERSTAND_THE_RISKS"
-  );
+  return false;
 }

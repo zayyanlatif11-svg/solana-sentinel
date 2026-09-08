@@ -145,6 +145,25 @@ describe("live-mode safety gates", () => {
     expect(isLiveTradingAllowed()).toBe(false);
   });
 
+  it("env unlock trio still does not allow live trading in V1", () => {
+    const prev = {
+      ALLOW_LIVE_TRADING: process.env.ALLOW_LIVE_TRADING,
+      OPERATING_MODE: process.env.OPERATING_MODE,
+      LIVE_BROADCAST_UNLOCK: process.env.LIVE_BROADCAST_UNLOCK,
+    };
+    process.env.ALLOW_LIVE_TRADING = "true";
+    process.env.OPERATING_MODE = "LIVE";
+    process.env.LIVE_BROADCAST_UNLOCK = "I_UNDERSTAND_THE_RISKS";
+    try {
+      expect(isLiveTradingAllowed()).toBe(false);
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
   it("assertNotLiveBroadcast throws for LIVE", () => {
     expect(() => assertNotLiveBroadcast("LIVE")).toThrow(/disabled/i);
   });
@@ -170,6 +189,31 @@ describe("live-mode safety gates", () => {
     expect(quote.inAmount).toBeTruthy();
     const plan = await jup.plan(quote, "PAPER");
     expect(plan.canBroadcast).toBe(false);
+  });
+
+  it("jupiter plan rejects LIVE mode even with unlock env present", async () => {
+    const prev = {
+      ALLOW_LIVE_TRADING: process.env.ALLOW_LIVE_TRADING,
+      OPERATING_MODE: process.env.OPERATING_MODE,
+      LIVE_BROADCAST_UNLOCK: process.env.LIVE_BROADCAST_UNLOCK,
+    };
+    process.env.ALLOW_LIVE_TRADING = "true";
+    process.env.OPERATING_MODE = "LIVE";
+    process.env.LIVE_BROADCAST_UNLOCK = "I_UNDERSTAND_THE_RISKS";
+    try {
+      const jup = new JupiterExecutionProvider("https://lite-api.jup.ag/swap/v1", undefined);
+      const quote = await jup.quote({
+        inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        outputMint: "So11111111111111111111111111111111111111112",
+        amount: "1000000",
+      });
+      await expect(jup.plan(quote, "LIVE")).rejects.toThrow(/disabled/i);
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   });
 });
 

@@ -42,7 +42,7 @@ export class BirdeyeMarketDataProvider implements MarketDataProvider {
     private readonly fallback = new DemoMarketDataProvider(),
   ) {}
 
-  private headers(): HeadersInit {
+  private headers(): Record<string, string> {
     return {
       "X-API-KEY": this.apiKey,
       Accept: "application/json",

@@ -52,10 +52,9 @@ pnpm --filter @sat/worker run start
 | `DEMO` | In-memory demo market data + mock research |
 | `PAPER` | Quotes may hit Jupiter; fills are simulated only |
 | `READ_ONLY` | Research without paper fills |
-| `LIVE` | **Remapped to PAPER** — broadcast requires multi-gate unlock that is not enabled |
+| `LIVE` | **Remapped to PAPER** — broadcast is not implemented |
 
-Gates for any future live work (still not implemented for broadcast):
-`ALLOW_LIVE_TRADING=true` + `OPERATING_MODE=LIVE` + `LIVE_BROADCAST_UNLOCK=I_UNDERSTAND_THE_RISKS`.
+Env unlock vars (`ALLOW_LIVE_TRADING`, `OPERATING_MODE=LIVE`, `LIVE_BROADCAST_UNLOCK`) are reserved for a future audited path; `isLiveTradingAllowed()` hard-returns `false` in V1.
 
 ## Environment variables
 
@@ -107,7 +106,9 @@ See [SECURITY.md](./SECURITY.md) and [docs/threat-model.md](./docs/threat-model.
 
 ## Screenshots / demo
 
-Run the dashboard locally; the first viewport shows **SAT Research** branding, DEMO/PAPER banner, NAV, opportunity feed, and provenance panels.
+![SAT Research dashboard — DEMO / PAPER banner, opportunity feed, provenance](./docs/screenshots/dashboard-demo.png)
+
+Run the dashboard locally (`pnpm --filter @sat/web run dev -- --port 4317`). The first viewport shows **SAT Research** branding, DEMO/PAPER banner, NAV, opportunity feed, and provenance panels.
 
 ## Roadmap
 

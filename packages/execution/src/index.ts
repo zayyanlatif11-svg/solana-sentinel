@@ -77,7 +77,7 @@ export class JupiterExecutionProvider implements ExecutionProvider {
     private readonly fallback = new DemoExecutionProvider(),
   ) {}
 
-  private headers(): HeadersInit {
+  private headers(): Record<string, string> {
     const h: Record<string, string> = { Accept: "application/json" };
     if (this.apiKey) h["x-api-key"] = this.apiKey;
     return h;

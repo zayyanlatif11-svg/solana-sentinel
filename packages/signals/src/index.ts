@@ -203,32 +203,34 @@ export function scoreOpportunity(
   };
 
   const w = opts.weights;
-  const weightSum =
-    w.momentum +
-    w.volume +
-    w.liquidity +
-    w.relativeStrength +
-    w.regime +
-    w.onChain +
-    w.riskReward +
-    w.research;
+  const wm = w.momentum ?? 0;
+  const wv = w.volume ?? 0;
+  const wl = w.liquidity ?? 0;
+  const wrs = w.relativeStrength ?? 0;
+  const wrg = w.regime ?? 0;
+  const woc = w.onChain ?? 0;
+  const wrr = w.riskReward ?? 0;
+  const wr = w.research ?? 0;
+  const cm = components.momentum ?? 0;
+  const cv = components.volume ?? 0;
+  const cl = components.liquidity ?? 0;
+  const crs = components.relativeStrength ?? 0;
+  const crg = components.regime ?? 0;
+  const coc = components.onChain ?? 0;
+  const crr = components.riskReward ?? 0;
+  const cr = components.research ?? 0;
+
+  const weightSum = wm + wv + wl + wrs + wrg + woc + wrr + wr;
 
   const compositeScore =
-    (components.momentum * w.momentum +
-      components.volume * w.volume +
-      components.liquidity * w.liquidity +
-      components.relativeStrength * w.relativeStrength +
-      components.regime * w.regime +
-      components.onChain * w.onChain +
-      components.riskReward * w.riskReward +
-      components.research * w.research) /
-    weightSum;
+    (cm * wm + cv * wv + cl * wl + crs * wrs + crg * wrg + coc * woc + crr * wrr + cr * wr) /
+    (weightSum || 1);
 
   const explanation = [
     `Composite ${compositeScore.toFixed(1)} using ${opts.strategyConfigVersion}`,
-    `Momentum ${components.momentum.toFixed(0)} (w=${w.momentum})`,
-    `Liquidity ${components.liquidity.toFixed(0)} (w=${w.liquidity})`,
-    `Risk/reward ${components.riskReward.toFixed(0)} (w=${w.riskReward})`,
+    `Momentum ${cm.toFixed(0)} (w=${wm})`,
+    `Liquidity ${cl.toFixed(0)} (w=${wl})`,
+    `Risk/reward ${crr.toFixed(0)} (w=${wrr})`,
   ];
 
   return { compositeScore, components, explanation };
