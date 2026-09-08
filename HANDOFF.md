@@ -10,7 +10,7 @@
 - Deterministic discovery → signals → token-risk → policy → scoring → research → portfolio risk → Jupiter quote/plan → paper fill → experiments
 - Next.js research terminal (institutional aesthetic, DEMO banner, NAV, feed, provenance, ledger, events)
 - Supabase/Postgres SQL migration + in-memory persistence fallback
-- Vitest suite (29 tests), GitHub Actions CI, SECURITY + threat model + methodology docs
+- Vitest suite (31 tests), GitHub Actions CI, SECURITY + threat model + methodology docs
 - Safety gates: LIVE remapped to PAPER; `canBroadcast: false`; `isLiveTradingAllowed()` always false in V1
 
 ## WHAT ACTUALLY RUNS
