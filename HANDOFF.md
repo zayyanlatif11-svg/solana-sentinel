@@ -116,4 +116,5 @@ Optional (platform continues with labeled fallbacks):
 **Demo URL:** [http://localhost:4317](http://localhost:4317)  
 **Mode:** PAPER · LIVE broadcasting disabled  
 **Branch:** `cursor/audit-safety-gates-d1d1`  
-**Audit:** [docs/AUDIT-GROK.md](./docs/AUDIT-GROK.md)
+**Audit:** [docs/AUDIT-GROK.md](./docs/AUDIT-GROK.md)  
+**Next-steps planning handoff:** [docs/NEXT-STEPS-HANDOFF.md](./docs/NEXT-STEPS-HANDOFF.md)

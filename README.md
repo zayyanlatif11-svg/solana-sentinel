@@ -104,6 +104,7 @@ See [SECURITY.md](./SECURITY.md) and [docs/threat-model.md](./docs/threat-model.
 - [Resume notes](./docs/resume-project-notes.md)
 - [Handoff](./HANDOFF.md)
 - [Adversarial audit (Grok)](./docs/AUDIT-GROK.md)
+- [Next-steps planning handoff](./docs/NEXT-STEPS-HANDOFF.md)
 
 ## Screenshots / demo
 
