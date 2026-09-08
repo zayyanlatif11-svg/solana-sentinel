@@ -1,11 +1,25 @@
 # Token risk
 
-Deterministic assessor (`token-risk-v1`) producing:
+Deterministic assessor (`token-risk-v1.5`) producing:
 
 - `riskScore` 0–100
 - `riskTier`: `LOWER_RISK` | `ELEVATED_RISK` | `HIGH_RISK` | `INSUFFICIENT_DATA`
 - `riskFlags[]`, `riskReasons[]`, `dataConfidence`
 
-**Never emits “SAFE”.**
+**Never emits “SAFE”.** Missing fields stay `null` / `INSUFFICIENT_DATA` — never optimistic defaults.
 
-Factors include token program, mint/freeze authority, Token-2022 permanent delegate / transfer restrictions, holder concentration, liquidity, exit liquidity, age, metadata quality, price impact, and missing data penalties.
+## On-chain mapping (Helius DAS + Solana RPC)
+
+Official DAS `getAsset` (`showFungible: true`):
+
+- Mint/freeze: `token_info.mint_authority` / `token_info.freeze_authority` (not `authorities[].type`)
+- Token-2022: `mint_extensions` (permanent_delegate, transfer_hook, transfer_fee_config, non_transferable, …). If the object is absent on Token-2022, fields stay **null**
+- Classic TOKEN program: permanent delegate / transfer hook treated as false (not applicable)
+
+Holders (optional; null on RPC failure):
+
+- `getTokenLargestAccounts` (up to 20 accounts)
+- `getTokenSupply` for denominator
+- Reports top-5 and top-10 concentration when supply is known
+
+Other factors: liquidity, exit liquidity, token age, metadata quality, estimated price impact. Incomplete DAS → reject path via `INSUFFICIENT_DATA`, not a fake-clean profile.

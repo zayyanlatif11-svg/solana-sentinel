@@ -14,9 +14,9 @@
 | Malformed market payloads | Zod validation; reject events |
 | Policy bypass via agent | Policy/risk/token-risk deterministic and authoritative; paper execute re-checks gates |
 | Provider failure understating risk | Helius/demo fallback uses unknown/null authorities — not a synthetic “clean” profile |
-| Unauthenticated local API | Documented; intended for trusted demo hosts only |
+| Unauthenticated local API | Documented; default bind 127.0.0.1; mutating POST origin/Host check |
 | Dependency / supply chain | Lockfile; CI install; minimal deps |
-| Secret commit | `.gitignore`, `.env.example` only, gitleaks config |
+| Secret commit | `.gitignore`, `.env.example` only, gitleaks in CI + pattern scan (markdown included) |
 | Spoofed “safe” labeling | Risk tiers exclude SAFE |
 | Demo mistaken for live edge | UI DEMO banners; `isDemo` fields; Jupiter demo-fallback notes |
 

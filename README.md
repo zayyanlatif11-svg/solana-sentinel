@@ -34,14 +34,16 @@ Professional research terminal for Solana asset discovery, deterministic signals
 ```bash
 pnpm install
 cp .env.example .env.local   # optional credentials
-pnpm --filter @sat/web run dev -- --port 4317
+pnpm --filter @sat/web run dev
 ```
 
-Open [http://localhost:4317](http://localhost:4317). Demo data is labeled in the UI banner.
+Open [http://127.0.0.1:4317](http://127.0.0.1:4317). The default bind is **loopback** (`127.0.0.1`). For a remote demo bind, use `pnpm --filter @sat/web run dev:remote-demo` and set `SAT_ALLOWED_ORIGINS`. Demo data is labeled in the UI banner.
 
 ```bash
 pnpm exec vitest run          # unit + integration
+pnpm lint                    # real ESLint: packages, worker, tests, and @sat/web
 pnpm --filter @sat/web run build
+pnpm exec playwright test   # critical DEMO/PAPER UI+API flow
 pnpm --filter @sat/worker run start
 ```
 
@@ -68,8 +70,8 @@ See [`.env.example`](./.env.example). Optional: `JUPITER_API_KEY`, `HELIUS_API_K
 | `@sat/market-data` | MarketDataProvider (Birdeye + DEMO) |
 | `@sat/solana` | OnChainProvider (Helius DAS getAsset + DEMO) |
 | `@sat/discovery` | Candidate discovery + Zod validation |
-| `@sat/signals` | Momentum/volume/liquidity/RS/vol/regime/on-chain |
-| `@sat/token-risk` | Deterministic risk score/tiers/flags |
+| `@sat/signals` | Snapshot + historical OHLCV (momentum/volume/vol/RS/breakout) |
+| `@sat/token-risk` | Deterministic risk score/tiers/flags (v1.5 DAS mapping) |
 | `@sat/policy-engine` | APPROVED / REJECTED / MANUAL_REVIEW |
 | `@sat/research-agent` | Bounded LLM / mock + injection guards |
 | `@sat/risk-engine` | Portfolio risk APPROVE/REJECT/REDUCE_SIZE |
@@ -77,8 +79,8 @@ See [`.env.example`](./.env.example). Optional: `JUPITER_API_KEY`, `HELIUS_API_K
 | `@sat/paper-trading` | Spread/slippage/impact/latency/partial/fail model |
 | `@sat/portfolio` | NAV, sizing helpers |
 | `@sat/analytics` | Returns, Sharpe/Sortino w/ sample warnings |
-| `@sat/experiments` | Replay vs SOL/BTC/cash/mechanical baselines |
-| `@sat/database` | In-memory store + Postgres migrations |
+| `@sat/experiments` | Observed paper equity replay; hides short-history metrics |
+| `@sat/database` | In-memory fallback + Postgres when `DATABASE_URL` is set |
 | `@sat/pipeline` | End-to-end orchestration |
 
 ## Safety
@@ -95,6 +97,7 @@ See [SECURITY.md](./SECURITY.md) and [docs/threat-model.md](./docs/threat-model.
 
 - [Architecture](./docs/architecture.md)
 - [Methodology](./docs/methodology.md)
+- [Signals / min history](./docs/signals.md)
 - [Token risk](./docs/token-risk.md)
 - [Policy engine](./docs/policy-engine.md)
 - [Risk engine](./docs/risk-engine.md)
@@ -103,6 +106,7 @@ See [SECURITY.md](./SECURITY.md) and [docs/threat-model.md](./docs/threat-model.
 - [Limitations](./docs/limitations.md)
 - [Resume notes](./docs/resume-project-notes.md)
 - [Handoff](./HANDOFF.md)
+- [V1.5 handoff](./docs/V1.5-HANDOFF.md)
 - [Adversarial audit (Grok)](./docs/AUDIT-GROK.md)
 - [Next-steps planning handoff](./docs/NEXT-STEPS-HANDOFF.md)
 
@@ -110,15 +114,14 @@ See [SECURITY.md](./SECURITY.md) and [docs/threat-model.md](./docs/threat-model.
 
 ![SAT Research dashboard — DEMO / PAPER banner, opportunity feed, provenance](./docs/screenshots/dashboard-demo.png)
 
-Run the dashboard locally (`pnpm --filter @sat/web run dev -- --port 4317`). The first viewport shows **SAT Research** branding, DEMO/PAPER banner, NAV, opportunity feed, and provenance panels.
+Run the dashboard locally (`pnpm --filter @sat/web run dev`). The first viewport shows **SAT Research** branding, DEMO/PAPER banner, NAV, opportunity feed, and provenance panels.
 
 ## Roadmap
 
-1. Wire Supabase persistence when `DATABASE_URL` present
-2. Richer Helius holder distribution + Token-2022 extension decode
-3. Historical bar ingestion for robust signal windows
-4. Playwright smoke tests in CI
-5. Optional hardware-wallet LIVE path behind additional human gates (not this release)
+1. Hosted Postgres/Supabase in a real demo environment (adapter is implemented; needs `DATABASE_URL`)
+2. Broader Token-2022 coverage when DAS/RPC actually return extension bytes
+3. Jupiter Swap API v2 quotes (still quote-only)
+4. Optional hardware-wallet LIVE path behind additional human gates (not this release)
 
 ## License
 

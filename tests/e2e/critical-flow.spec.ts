@@ -39,12 +39,22 @@ test.describe("critical DEMO/PAPER flow", () => {
     await page.getByTestId("candidate-WIF").click();
     await expect(page.getByTestId("btn-paper-execute")).toBeEnabled();
     await page.getByTestId("btn-paper-execute").click();
-    await expect(page.getByTestId("action-msg")).toContainText(/Paper fill|already paper-executed/i);
+    await expect(page.getByTestId("action-msg")).toContainText(/Paper fill/i);
     await expect(page.getByTestId("ledger-order").first()).toBeVisible();
     await expect(page.getByTestId("position-WIF")).toBeVisible();
+    await expect(page.getByTestId("btn-paper-execute")).toBeDisabled();
 
-    await page.getByTestId("btn-paper-execute").click();
-    await expect(page.getByTestId("action-msg")).toContainText(/already paper-executed|paper-executed/i);
+    const afterUi = await request.get("/api/state");
+    const filled = await afterUi.json();
+    const wif = filled.proposals.find((p: { symbol: string }) => p.symbol === "WIF");
+    expect(wif?.status).toBe("ACCEPTED_PAPER");
+    const dup = await request.post("/api/state", {
+      data: { action: "paper_execute", proposalId: wif.id },
+      headers: { origin: "http://127.0.0.1:4317" },
+    });
+    expect(dup.status()).toBe(400);
+    const dupBody = await dup.json();
+    expect(String(dupBody.error)).toMatch(/already paper-executed/i);
 
     const health = await request.get("/api/state");
     const after = await health.json();

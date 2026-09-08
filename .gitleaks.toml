@@ -7,7 +7,12 @@ regex = '''(?i)(api[_\-]?key|secret|private[_\-]?key|seed[_\-]?phrase)\s*[:=]\s*
 tags = ["key", "secret"]
 
 [allowlist]
-description = "Env template only — markdown is scanned; docs must not contain live credentials"
+description = "Env template only. Markdown is scanned. Dependencies and lockfile are not credential sources."
 paths = [
   '''\.env\.example$''',
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''pnpm-lock\.yaml$''',
+  '''playwright-report/''',
+  '''test-results/''',
 ]

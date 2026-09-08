@@ -10,7 +10,7 @@ This repository is a **research / paper-trading** platform. Live trade broadcast
 - API keys, Supabase service role keys, wallet secrets
 - `.env`, `.env.local`, or credential dumps
 
-Use `.env.example` as the only committed env template. Secret scanning config: `.gitleaks.toml`.
+Use `.env.example` as the only committed env template. Secret scanning: `.gitleaks.toml` (gitleaks in CI) plus `scripts/secret-scan.sh` (pattern scan, including markdown).
 
 ## Trust boundaries
 
@@ -21,7 +21,12 @@ Use `.env.example` as the only committed env template. Secret scanning config: `
 | External metadata / social / web | UNTRUSTED; injection-sanitized |
 | Execution provider | Quote + plan only; `canBroadcast` always `false` |
 | Policy / risk / token-risk | Deterministic; LLM cannot bypass |
-| Local HTTP API | Unauthenticated `GET`/`POST` `/api/state`. Demo default binds `0.0.0.0:4317`. Do not expose beyond a trusted network. |
+| Local HTTP API | Unauthenticated `GET`/`POST` `/api/state`. Default bind `127.0.0.1:4317`. Mutating POST requires a loopback Host or an Origin on the allowlist (`SAT_ALLOWED_ORIGINS`). Do not expose beyond a trusted network. |
+
+## Bind / remote demo
+
+- Default: `next dev --hostname 127.0.0.1` (loopback only)
+- Remote demo: `pnpm --filter @sat/web run dev:remote-demo` binds `0.0.0.0:4317` and **must** set `SAT_ALLOWED_ORIGINS` (comma-separated origins). Missing Origin on a non-loopback Host is rejected (403)
 
 ## Reporting
 

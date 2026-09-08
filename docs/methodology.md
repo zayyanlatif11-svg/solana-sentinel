@@ -17,6 +17,12 @@ Weighted blend of normalized components:
 
 Scores are explainable (`explanation[]`) and versioned. Changing weights requires a new `strategy` version string.
 
+## Relative strength
+
+Uses SOL (optional BTC) returns from aligned OHLCV when available. **No hardcoded +2% benchmark.** Missing benchmark → INSUFFICIENT_DATA.
+
+See [signals.md](./signals.md).
+
 ## Market regime
 
 Universe average 24h change + average absolute volatility → RISK_ON / NEUTRAL / RISK_OFF / HIGH_VOLATILITY.

@@ -1,6 +1,7 @@
 -- Solana Agentic Trading Research Platform schema
 -- Apply with supabase db push / psql when DATABASE_URL is available.
--- Local default is in-memory demo persistence.
+-- V1.5 runtime adapter uses sat_* JSONB tables in 20260908000000_v15_store.sql.
+-- This file remains the original domain schema for analytics / future SQL.
 
 create extension if not exists "pgcrypto";
 

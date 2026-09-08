@@ -54,7 +54,7 @@ jobs:
           curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/gitleaks
       - name: Gitleaks
-        run: gitleaks detect --source . --verbose --no-git
+        run: gitleaks detect --source . --verbose
 
   e2e:
     runs-on: ubuntu-latest

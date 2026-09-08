@@ -1,5 +1,7 @@
 # NEXT-STEPS HANDOFF — Solana Agentic Trading Research Platform
 
+**V1.5 was implemented on this branch.** Use [`docs/V1.5-HANDOFF.md`](./V1.5-HANDOFF.md) as the current implementation handoff. This file remains as the pre-V1.5 planning snapshot.
+
 Planning handoff for a follow-up model (SOL / GPT 5.6). **Plan next steps; do not treat this as an implementation brief.** Verify anything you act on against the tip commit below.
 
 Generated from tip inspection on **2026-09-08** against branch `cursor/audit-safety-gates-d1d1`. Code/audit verification (vitest, typecheck, live `/api/state`) measured on `6bc79f6`; subsequent commits on this branch that only touch docs do not change that code tip.
