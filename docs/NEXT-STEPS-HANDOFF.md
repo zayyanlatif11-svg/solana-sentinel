@@ -78,20 +78,21 @@ bash scripts/secret-scan.sh          # pattern scan; ignores *.md
 
 | Ref | Tip (at handoff write) | Relation |
 |-----|------------------------|----------|
-| `cursor/audit-safety-gates-d1d1` | `6bc79f6` — *fix(audit): paper-execute gates, Helius risk fallback, adapter honesty* | **Newest tip; contains QA + audit fixes** |
-| `cursor/final-qa-fixes-6a3e` | `6759271` | Ancestor of audit branch; QA typecheck + hard-false live gate; **missing audit fixes** |
-| `main` | `9fff0f0` | Ancestor of both; **4 commits behind** audit tip |
+| `cursor/audit-safety-gates-d1d1` | docs tip on top of `6bc79f6` | **Source of truth; contains QA + audit fixes + this handoff** |
+| `cursor/final-qa-fixes-6a3e` | `6759271` | Ancestor of audit branch; QA typecheck + hard-false live gate; **missing audit H1–H4 fixes** |
+| `main` | `9fff0f0` | Ancestor of both; behind audit tip (audit code + docs) |
 
 Lineage (verified):
 
 ```text
 main (9fff0f0)
   └─ QA (f7e5bec … 6759271)     ← isLiveTradingAllowed hard-false, typecheck fixes
-       └─ audit (6bc79f6)        ← H1–H4 + M1–M4 fixes; 31→36 tests; AUDIT-GROK.md
+       └─ audit code (6bc79f6)   ← H1–H4 + M1–M4 fixes; 31→36 tests; AUDIT-GROK.md
+            └─ docs handoff      ← NEXT-STEPS-HANDOFF.md (this file)
 ```
 
 - `main` is an ancestor of HEAD; HEAD is **not** merged to `main`.
-- Audit branch is **1 commit ahead** of QA and includes all important paper-execute / Helius / test honesty fixes.
+- Audit branch is ahead of QA and includes all important paper-execute / Helius / test honesty fixes (`6bc79f6`), plus docs handoff commits after that.
 - Do **not** plan from `main` or QA alone if you need post-audit safety behavior.
 
 Related docs on tip: root `HANDOFF.md`, `docs/AUDIT-GROK.md`, this file.
@@ -354,5 +355,4 @@ Anti-fabrication list for the follow-up planner and any downstream docs:
 **Mode:** PAPER · LIVE broadcasting disabled  
 **Source of truth branch:** `cursor/audit-safety-gates-d1d1`  
 **Verified audit code tip:** `6bc79f6f002cda890b5114b3c848fcf93375e8ce`  
-**This handoff commit:** see `git log -1 -- docs/NEXT-STEPS-HANDOFF.md` on the branch (docs-only; same code as verified tip)  
 **Follow-up role:** plan next steps from this document; re-verify commands before implementation.
