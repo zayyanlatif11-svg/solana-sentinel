@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "echo \"lint ok @sat/database\"",
+    "lint": "eslint src --max-warnings 0",
     "test": "echo \"use root vitest\"",
     "clean": "rm -rf dist"
   },
@@ -23,9 +23,11 @@
     "@sat/shared": "workspace:*",
     "zod": "^3.24.2",
     "@sat/portfolio": "workspace:*",
-    "@sat/experiments": "workspace:*"
+    "@sat/experiments": "workspace:*",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "@types/pg": "^8.15.5"
   }
 }

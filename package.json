@@ -11,19 +11,23 @@
     "build": "pnpm -r --filter=./packages/* run build && pnpm --filter=@sat/web run build && pnpm --filter=@sat/worker run build",
     "dev": "pnpm --filter=@sat/web run dev",
     "dev:worker": "pnpm --filter=@sat/worker run dev",
-    "lint": "pnpm -r run lint",
+    "lint": "eslint --max-warnings 0 packages apps/worker tests && pnpm --filter @sat/web run lint",
     "typecheck": "pnpm -r run typecheck",
     "test": "vitest run",
     "test:unit": "vitest run",
+    "test:e2e": "playwright test",
     "clean": "pnpm -r run clean && rm -rf node_modules",
     "secret-scan": "bash scripts/secret-scan.sh"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.55.0",
     "@types/node": "^22.13.10",
     "eslint": "^9.22.0",
     "prettier": "^3.5.3",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
+    "typescript-eslint": "^8.70.0",
     "vitest": "^3.0.9"
   },
   "dependencies": {

@@ -26,15 +26,17 @@ export function sanitizeUntrustedText(text: string): {
   matches: string[];
 } {
   const matches = INJECTION_PATTERNS.filter((p) => p.test(text)).map((p) => p.source);
-  const cleaned = text
-    .replace(/[\u0000-\u001F]/g, " ")
-    .slice(0, 4000);
+  let cleaned = "";
+  for (const ch of text) {
+    cleaned += ch.charCodeAt(0) < 32 ? " " : ch;
+  }
+  cleaned = cleaned.slice(0, 4000);
   return { cleaned, injectionSuspected: matches.length > 0, matches };
 }
 
 export class MockResearchProvider implements ResearchProvider {
   async research(asset: CandidateAsset, context: string): Promise<ResearchBrief> {
-    const { cleaned, injectionSuspected, matches } = sanitizeUntrustedText(
+    const { injectionSuspected, matches } = sanitizeUntrustedText(
       `${JSON.stringify(asset.metadata)} ${context}`,
     );
 

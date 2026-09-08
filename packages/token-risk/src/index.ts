@@ -5,7 +5,7 @@ import {
   nowIso,
 } from "@sat/shared";
 
-export const TOKEN_RISK_CONFIG_VERSION = "token-risk-v1";
+export const TOKEN_RISK_CONFIG_VERSION = "token-risk-v1.5";
 
 export interface OnChainRiskInput {
   tokenProgram?: "TOKEN" | "TOKEN_2022" | "UNKNOWN";
@@ -13,7 +13,11 @@ export interface OnChainRiskInput {
   freezeAuthority?: boolean | null;
   permanentDelegate?: boolean | null;
   transferRestrictions?: boolean | null;
+  transferHook?: boolean | null;
+  token2022Extensions?: string[] | null;
   topHolderConcentrationPct?: number | null;
+  top5HolderConcentrationPct?: number | null;
+  top10HolderConcentrationPct?: number | null;
   exitLiquidityUsd?: number | null;
   estimatedPriceImpactPct?: number | null;
   metadataQuality?: number | null;
@@ -77,6 +81,14 @@ export function assessTokenRisk(
       bump(25, "PERMANENT_DELEGATE", "Permanent delegate can move tokens");
   }
 
+  if (onChain.transferHook == null) {
+    if (tokenProgram === "TOKEN_2022") missing.push("transferHook");
+  } else {
+    available++;
+    observations++;
+    if (onChain.transferHook) bump(22, "TRANSFER_HOOK", "Transfer hook program is present");
+  }
+
   if (onChain.transferRestrictions == null) {
     if (tokenProgram === "TOKEN_2022") missing.push("transferRestrictions");
   } else {
@@ -86,7 +98,9 @@ export function assessTokenRisk(
       bump(20, "TRANSFER_RESTRICTED", "Transfer hooks/restrictions present");
   }
 
-  const concentration = onChain.topHolderConcentrationPct;
+  const top5 = onChain.top5HolderConcentrationPct ?? null;
+  const top10 = onChain.top10HolderConcentrationPct ?? null;
+  const concentration = onChain.topHolderConcentrationPct ?? top5 ?? top10;
   if (concentration == null) missing.push("topHolderConcentrationPct");
   else {
     available++;
@@ -96,6 +110,8 @@ export function assessTokenRisk(
     else if (concentration > 40)
       bump(10, "HOLDER_CONCENTRATION_MODERATE", `Top holders control ${concentration.toFixed(1)}%`);
   }
+  if (top5 == null) missing.push("top5HolderConcentrationPct");
+  if (top10 == null) missing.push("top10HolderConcentrationPct");
 
   const liq = asset.liquidityUsd;
   if (liq == null) missing.push("liquidityUsd");
@@ -124,9 +140,7 @@ export function assessTokenRisk(
     else if (age < 24 * 7) bump(10, "NEW_TOKEN", "Token age under 7 days");
   }
 
-  const metaQ =
-    onChain.metadataQuality ??
-    (asset.name && asset.symbol ? 0.7 : 0.2);
+  const metaQ = onChain.metadataQuality ?? (asset.name && asset.symbol ? 0.7 : 0.2);
   available++;
   observations++;
   if (metaQ < 0.4) bump(8, "POOR_METADATA", "Metadata quality is weak");
@@ -146,9 +160,12 @@ export function assessTokenRisk(
     observations++;
   }
 
+  if (onChain.token2022Extensions == null && tokenProgram === "TOKEN_2022") {
+    missing.push("token2022Extensions");
+  }
+
   score = Math.min(100, score);
   const dataConfidence = observations === 0 ? 0 : available / Math.max(observations, 1);
-  // Penalize confidence for missing critical fields
   const adjustedConfidence = Math.max(
     0,
     Math.min(1, dataConfidence - missing.length * 0.03),
@@ -159,7 +176,6 @@ export function assessTokenRisk(
   }
 
   const riskTier = tierFromScore(score, adjustedConfidence);
-  // Never label as SAFE — LOWER_RISK is the best tier
   if (reasons.length === 0) {
     reasons.push("No elevated deterministic risk flags from available data");
   }
@@ -183,6 +199,10 @@ export function assessTokenRisk(
       tokenAgeHours: age ?? null,
       metadataQuality: metaQ,
       estimatedPriceImpactPct: impact ?? null,
+      top5HolderConcentrationPct: top5,
+      top10HolderConcentrationPct: top10,
+      transferHook: onChain.transferHook ?? null,
+      token2022Extensions: onChain.token2022Extensions ?? null,
       missingFields: missing,
     },
     assessedAt: nowIso(),

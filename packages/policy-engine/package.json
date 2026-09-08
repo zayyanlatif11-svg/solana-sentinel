@@ -15,11 +15,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "echo \"lint ok @sat/policy-engine\"",
+    "lint": "eslint src --max-warnings 0",
     "test": "echo \"use root vitest\"",
     "clean": "rm -rf dist"
   },
-  "dependencies": {"@sat/shared":"workspace:*","zod":"^3.24.2"},
+  "dependencies": {
+    "@sat/shared": "workspace:*",
+    "zod": "^3.24.2"
+  },
   "devDependencies": {
     "typescript": "^5.8.2"
   }

@@ -235,7 +235,7 @@ describe("P0 invariants", () => {
         assessedAt: nowIso(),
       },
     });
-    db.addProposal(p);
+    await db.addProposal(p);
     await expect(executePaperProposal(p.id, db)).rejects.toThrow(/Policy not APPROVED/i);
   });
 
@@ -249,7 +249,7 @@ describe("P0 invariants", () => {
         riskReasons: ["test high risk"],
       },
     });
-    db.addProposal(p);
+    await db.addProposal(p);
     await expect(executePaperProposal(p.id, db)).rejects.toThrow(/Token-risk gate/i);
   });
 
@@ -263,7 +263,7 @@ describe("P0 invariants", () => {
         reasons: ["test risk reject"],
       },
     });
-    db.addProposal(p);
+    await db.addProposal(p);
     await expect(executePaperProposal(p.id, db)).rejects.toThrow(/Risk REJECT/i);
   });
 });

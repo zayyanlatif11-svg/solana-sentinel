@@ -1,4 +1,5 @@
 title = "gitleaks"
+
 [[rules]]
 id = "generic-api-key"
 description = "Generic API Key"
@@ -6,9 +7,7 @@ regex = '''(?i)(api[_\-]?key|secret|private[_\-]?key|seed[_\-]?phrase)\s*[:=]\s*
 tags = ["key", "secret"]
 
 [allowlist]
-description = "Allowlisted files"
+description = "Env template only — markdown is scanned; docs must not contain live credentials"
 paths = [
   '''\.env\.example$''',
-  '''docs/.*''',
-  '''.*\.md$''',
 ]

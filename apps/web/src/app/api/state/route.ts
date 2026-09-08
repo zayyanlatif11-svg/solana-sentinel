@@ -9,26 +9,32 @@ import {
   getSystemHealth,
   getOperatingMode,
 } from "@sat/pipeline";
+import { mutatingRequestDenied } from "@/lib/request-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const db = getDatabase();
-  let state = db.getState();
+  let state = await db.getState();
   if (state.candidates.length === 0) {
     await runFullResearchPass(db);
-    if (db.getState().experiments.length === 0) runDemoExperiment(db);
-    state = db.getState();
+    if ((await db.getState()).experiments.length === 0) await runDemoExperiment(db);
+    state = await db.getState();
   }
   return NextResponse.json({
     ...state,
-    health: getSystemHealth(db),
+    health: await getSystemHealth(db),
     operatingMode: getOperatingMode(),
   });
 }
 
 export async function POST(req: Request) {
+  const denied = mutatingRequestDenied(req);
+  if (denied) {
+    return NextResponse.json({ error: denied }, { status: 403 });
+  }
+
   const db = getDatabase();
   const body = (await req.json()) as {
     action?: string;
@@ -42,7 +48,7 @@ export async function POST(req: Request) {
     case "research_pass":
       return NextResponse.json({
         proposals: await runFullResearchPass(db),
-        health: getSystemHealth(db),
+        health: await getSystemHealth(db),
       });
     case "evaluate":
       if (!body.mint)
@@ -61,12 +67,12 @@ export async function POST(req: Request) {
         );
       }
     case "experiment":
-      return NextResponse.json({ experiment: runDemoExperiment(db) });
+      return NextResponse.json({ experiment: await runDemoExperiment(db) });
     case "reset":
-      db.reset(Number(process.env.PAPER_STARTING_CAPITAL_USD ?? 100_000));
+      await db.reset(Number(process.env.PAPER_STARTING_CAPITAL_USD ?? 100_000));
       await runFullResearchPass(db);
-      runDemoExperiment(db);
-      return NextResponse.json(db.getState());
+      await runDemoExperiment(db);
+      return NextResponse.json(await db.getState());
     default:
       return NextResponse.json({ error: "unknown action" }, { status: 400 });
   }

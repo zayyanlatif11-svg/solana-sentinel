@@ -5,6 +5,28 @@ import {
   createEvent,
   type SystemEvent,
 } from "@sat/shared";
+import {
+  computeHistoricalMomentum,
+  computeHistoricalVolume,
+  computeHistoricalVolatility,
+  computeHistoricalRelativeStrength,
+  computeTrendBreakout,
+  type HistoricalBars,
+} from "./historical";
+
+export {
+  SIGNAL_MIN_HISTORY,
+  validateOhlcvBars,
+  barsAsOf,
+  simpleReturnPct,
+  computeHistoricalMomentum,
+  computeHistoricalVolume,
+  computeHistoricalVolatility,
+  computeHistoricalRelativeStrength,
+  computeTrendBreakout,
+  computeHistoricalSignals,
+  type HistoricalBars,
+} from "./historical";
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -15,6 +37,11 @@ function norm(value: number, scale: number): number {
 }
 
 export function computeMomentum(asset: CandidateAsset): SignalResult {
+  const missing = [
+    asset.priceChange1hPct,
+    asset.priceChange24hPct,
+    asset.priceChange7dPct,
+  ].filter((x) => x == null).length;
   const c1 = asset.priceChange1hPct ?? 0;
   const c24 = asset.priceChange24hPct ?? 0;
   const c7 = asset.priceChange7dPct ?? 0;
@@ -28,8 +55,13 @@ export function computeMomentum(asset: CandidateAsset): SignalResult {
     value,
     normalizedScore: norm(value, 20),
     confidence,
-    source: "deterministic-v1",
+    source: "snapshot-v1.5",
     timestamp: new Date().toISOString(),
+    meta: {
+      snapshotFallback: true,
+      insufficientData: missing > 0,
+      reason: missing ? "INSUFFICIENT_DATA" : undefined,
+    },
   };
 }
 
@@ -41,59 +73,98 @@ export function computeVolume(asset: CandidateAsset): SignalResult {
     name: "volume",
     value,
     normalizedScore: norm(change, 50),
-    confidence: asset.volume24hUsd != null ? 0.85 : 0.2,
-    source: "deterministic-v1",
+    confidence: asset.volume24hUsd != null ? 0.45 : 0.15,
+    source: "snapshot-v1.5",
     timestamp: new Date().toISOString(),
+    meta: {
+      snapshotFallback: true,
+      insufficientData: asset.volume24hUsd == null,
+      reason: asset.volume24hUsd == null ? "INSUFFICIENT_DATA" : "SNAPSHOT_ONLY",
+    },
   };
 }
 
 export function computeLiquidity(asset: CandidateAsset): SignalResult {
   const liq = asset.liquidityUsd ?? 0;
   const value = Math.log10(Math.max(liq, 1));
-  // Prefer higher liquidity; map log10(1e5)=5 → mid, log10(1e7)=7 → strong
   const normalizedScore = clamp((value - 5) / 3, -1, 1);
   return {
     name: "liquidity",
     value: liq,
     normalizedScore,
     confidence: asset.liquidityUsd != null ? 0.9 : 0.1,
-    source: "deterministic-v1",
+    source: "snapshot-v1.5",
     timestamp: new Date().toISOString(),
+    meta: { insufficientData: asset.liquidityUsd == null },
   };
 }
 
+/**
+ * Relative strength vs an explicit benchmark return.
+ * Never uses a hardcoded +2% stand-in. Missing benchmark → INSUFFICIENT_DATA.
+ */
 export function computeRelativeStrength(
   asset: CandidateAsset,
-  benchmarkChange24hPct = 2.0,
+  benchmarkChangePct: number | null = null,
+  benchmarkLabel = "SOL",
 ): SignalResult {
-  const c24 = asset.priceChange24hPct ?? 0;
-  const rs = c24 - benchmarkChange24hPct;
+  if (benchmarkChangePct == null || asset.priceChange24hPct == null) {
+    return {
+      name: "relative_strength",
+      value: 0,
+      normalizedScore: 0,
+      confidence: 0.1,
+      source: "snapshot-v1.5",
+      timestamp: new Date().toISOString(),
+      meta: {
+        insufficientData: true,
+        reason: "NO_BENCHMARK",
+        hardcodedBenchmark: false,
+        benchmark: benchmarkLabel,
+      },
+    };
+  }
+  const rs = asset.priceChange24hPct - benchmarkChangePct;
   return {
     name: "relative_strength",
     value: rs,
     normalizedScore: norm(rs, 15),
-    confidence: asset.priceChange24hPct != null ? 0.8 : 0.2,
-    source: "deterministic-v1",
+    confidence: 0.7,
+    source: "snapshot-v1.5",
     timestamp: new Date().toISOString(),
-    meta: { benchmarkChange24hPct },
+    meta: { benchmarkChangePct, benchmark: benchmarkLabel, hardcodedBenchmark: false },
   };
 }
 
 export function computeVolatility(asset: CandidateAsset): SignalResult {
+  const have = [asset.priceChange1hPct, asset.priceChange24hPct, asset.priceChange7dPct].filter(
+    (x) => x != null,
+  ).length;
+  if (have === 0) {
+    return {
+      name: "volatility",
+      value: 0,
+      normalizedScore: 0,
+      confidence: 0.1,
+      source: "snapshot-v1.5",
+      timestamp: new Date().toISOString(),
+      meta: { insufficientData: true, reason: "INSUFFICIENT_DATA" },
+    };
+  }
   const moves = [
     Math.abs(asset.priceChange1hPct ?? 0) * 24,
     Math.abs(asset.priceChange24hPct ?? 0),
     Math.abs(asset.priceChange7dPct ?? 0) / 7,
   ];
   const value = moves.reduce((a, b) => a + b, 0) / moves.length;
-  // High vol → negative score for risk-adjusted preference
   return {
     name: "volatility",
     value,
     normalizedScore: -norm(value, 25),
-    confidence: 0.7,
-    source: "deterministic-v1",
+    confidence: 0.4,
+    source: "snapshot-v1.5",
     timestamp: new Date().toISOString(),
+    meta: { snapshotFallback: true },
   };
 }
 
@@ -127,9 +198,9 @@ export function computeMarketRegime(assets: CandidateAsset[]): {
       value: avg,
       normalizedScore: scoreMap[regime],
       confidence: changes.length >= 3 ? 0.75 : 0.4,
-      source: "deterministic-v1",
+      source: "snapshot-v1.5",
       timestamp: new Date().toISOString(),
-      meta: { regime, avgVol },
+      meta: { regime, avgVol, insufficientData: changes.length < 3 },
     },
   };
 }
@@ -145,24 +216,55 @@ export function computeOnChain(asset: CandidateAsset): SignalResult {
     value,
     normalizedScore: value * 2 - 1,
     confidence: asset.holderCount != null && asset.tokenAgeHours != null ? 0.8 : 0.35,
-    source: "deterministic-v1",
+    source: "snapshot-v1.5",
     timestamp: new Date().toISOString(),
+    meta: {
+      insufficientData: asset.holderCount == null || asset.tokenAgeHours == null,
+    },
   };
 }
 
 export function computeAllSignals(
   asset: CandidateAsset,
   universe: CandidateAsset[] = [asset],
+  historical?: HistoricalBars,
 ): { signals: SignalResult[]; events: SystemEvent[]; regime: MarketRegime } {
   const { regime, signal: regimeSignal } = computeMarketRegime(universe);
+  const solAsset = universe.find((a) => a.symbol === "SOL");
+  const snapshotRs = computeRelativeStrength(
+    asset,
+    solAsset?.priceChange24hPct ?? null,
+    "SOL",
+  );
+
+  const useHist = Boolean(historical);
+  const momentum = useHist && historical ? computeHistoricalMomentum(historical) : computeMomentum(asset);
+  const volume = useHist && historical ? computeHistoricalVolume(historical) : computeVolume(asset);
+  const volatility =
+    useHist && historical ? computeHistoricalVolatility(historical) : computeVolatility(asset);
+  const relativeStrength =
+    useHist && historical ? computeHistoricalRelativeStrength(historical) : snapshotRs;
+  const trend = historical
+    ? computeTrendBreakout(historical)
+    : {
+        name: "trend_breakout" as const,
+        value: 0,
+        normalizedScore: 0,
+        confidence: 0.1,
+        source: "snapshot-v1.5",
+        timestamp: new Date().toISOString(),
+        meta: { insufficientData: true, reason: "INSUFFICIENT_DATA" },
+      };
+
   const signals = [
-    computeMomentum(asset),
-    computeVolume(asset),
+    momentum,
+    volume,
     computeLiquidity(asset),
-    computeRelativeStrength(asset),
-    computeVolatility(asset),
+    relativeStrength,
+    volatility,
     regimeSignal,
     computeOnChain(asset),
+    trend,
   ];
   const events = signals.map((s) =>
     createEvent("SIGNAL_GENERATED", `${s.name}=${s.normalizedScore.toFixed(3)}`, {
@@ -197,8 +299,8 @@ export function scoreOpportunity(
     relativeStrength: to01(byName.relative_strength?.normalizedScore ?? 0) * 100,
     regime: to01(byName.market_regime?.normalizedScore ?? 0) * 100,
     onChain: to01(byName.on_chain?.normalizedScore ?? 0) * 100,
-    riskReward:
-      opts.riskScore != null ? clamp(100 - opts.riskScore, 0, 100) : 50,
+    trendBreakout: to01(byName.trend_breakout?.normalizedScore ?? 0) * 100,
+    riskReward: opts.riskScore != null ? clamp(100 - opts.riskScore, 0, 100) : 50,
     research: (opts.researchConfidence ?? 0.5) * 100,
   };
 
@@ -209,6 +311,7 @@ export function scoreOpportunity(
   const wrs = w.relativeStrength ?? 0;
   const wrg = w.regime ?? 0;
   const woc = w.onChain ?? 0;
+  const wtb = w.trendBreakout ?? 0;
   const wrr = w.riskReward ?? 0;
   const wr = w.research ?? 0;
   const cm = components.momentum ?? 0;
@@ -217,13 +320,22 @@ export function scoreOpportunity(
   const crs = components.relativeStrength ?? 0;
   const crg = components.regime ?? 0;
   const coc = components.onChain ?? 0;
+  const ctb = components.trendBreakout ?? 0;
   const crr = components.riskReward ?? 0;
   const cr = components.research ?? 0;
 
-  const weightSum = wm + wv + wl + wrs + wrg + woc + wrr + wr;
+  const weightSum = wm + wv + wl + wrs + wrg + woc + wtb + wrr + wr;
 
   const compositeScore =
-    (cm * wm + cv * wv + cl * wl + crs * wrs + crg * wrg + coc * woc + crr * wrr + cr * wr) /
+    (cm * wm +
+      cv * wv +
+      cl * wl +
+      crs * wrs +
+      crg * wrg +
+      coc * woc +
+      ctb * wtb +
+      crr * wrr +
+      cr * wr) /
     (weightSum || 1);
 
   const explanation = [

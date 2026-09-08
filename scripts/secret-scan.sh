@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 echo "Basic secret scan (patterns)..."
-# Scan likely secret material; ignore documentation mentions
-matches=$(rg -n --hidden -g '!.git' -g '!pnpm-lock.yaml' -g '!node_modules' -g '!.env.example' -g '!*.md' -g '!scripts/secret-scan.sh' -g '!.gitleaks.toml' \
-  -e 'BEGIN (RSA |OPENSSH )?PRIVATE KEY' \
+# Complementary to gitleaks. Markdown is included so docs cannot hide live keys.
+# .env.example is a template and is excluded.
+matches=$(rg -n --hidden -g '!.git' -g '!pnpm-lock.yaml' -g '!node_modules' -g '!.env.example' -g '!scripts/secret-scan.sh' -g '!.gitleaks.toml' -g '!playwright-report' -g '!test-results' \
+  -e 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY' \
   -e 'SUPABASE_SERVICE_ROLE_KEY=[A-Za-z0-9_-]{20,}' \
   -e 'OPENAI_API_KEY=sk-[A-Za-z0-9]{20,}' \
   -e 'HELIUS_API_KEY=[A-Za-z0-9_-]{20,}' \

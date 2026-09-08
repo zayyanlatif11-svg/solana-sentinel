@@ -8,7 +8,26 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sat
+          POSTGRES_PASSWORD: sat
+          POSTGRES_DB: sat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sat -d sat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://sat:sat@127.0.0.1:5432/sat_test
+      DEMO_MODE: "true"
+      OPERATING_MODE: PAPER
+      ALLOW_LIVE_TRADING: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,17 +39,44 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Lint web
-        run: pnpm --filter @sat/web run lint
+      - name: Lint (web + packages + worker + tests)
+        run: pnpm lint
       - name: Typecheck
         run: pnpm run typecheck
       - name: Unit & integration tests
         run: pnpm exec vitest run
       - name: Production build web
         run: pnpm --filter @sat/web run build
-        env:
-          DEMO_MODE: "true"
-          OPERATING_MODE: PAPER
-          ALLOW_LIVE_TRADING: "false"
-      - name: Secret scan
+      - name: Pattern secret scan
         run: bash scripts/secret-scan.sh
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+      - name: Gitleaks
+        run: gitleaks detect --source . --verbose --no-git
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DEMO_MODE: "true"
+      OPERATING_MODE: PAPER
+      ALLOW_LIVE_TRADING: "false"
+      PAPER_FAIL_PROBABILITY: "0"
+      PAPER_PARTIAL_PROBABILITY: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright critical flow
+        run: pnpm exec playwright test

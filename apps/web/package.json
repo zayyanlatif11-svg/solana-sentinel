@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack --port 4317 --hostname 0.0.0.0",
-    "dev:default": "next dev --turbopack",
+    "dev": "next dev --turbopack --port 4317 --hostname 127.0.0.1",
+    "dev:remote-demo": "next dev --turbopack --port 4317 --hostname 0.0.0.0",
     "build": "next build",
-    "start": "next start --port 4317 --hostname 0.0.0.0",
+    "start": "next start --port 4317 --hostname 127.0.0.1",
+    "start:remote-demo": "next start --port 4317 --hostname 0.0.0.0",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf .next dist"

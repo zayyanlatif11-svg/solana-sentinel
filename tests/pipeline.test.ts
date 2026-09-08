@@ -75,10 +75,12 @@ describe("pipeline e2e (demo)", () => {
     }
   });
 
-  it("runs experiment with sample warnings possible", () => {
-    const exp = runDemoExperiment();
-    expect(exp.baselines.solBuyHold).toBeTruthy();
-    expect(exp.notes.join(" ")).toMatch(/not live/i);
+  it("runs experiment without inventing synthetic equity", async () => {
+    const exp = await runDemoExperiment();
+    expect(exp.dataQuality).toBe("INSUFFICIENT_HISTORY");
+    expect(exp.strategyMetrics).toBeNull();
+    expect(exp.notes.join(" ")).toMatch(/INSUFFICIENT HISTORY/i);
+    expect(exp.notes.join(" ")).toMatch(/not live|DEMO DATA/i);
   });
 
   it("forces non-live operating mode", () => {

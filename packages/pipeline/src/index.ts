@@ -3,6 +3,7 @@ import {
   DEFAULT_RISK_CONFIG,
   DEFAULT_POLICY_CONFIG,
   USDC,
+  WSOL,
   type TradeProposal,
   type OpportunityScore,
   type OperatingMode,
@@ -15,7 +16,7 @@ import { getDatabase, type Database } from "@sat/database";
 import { createMarketDataProvider } from "@sat/market-data";
 import { createOnChainProvider } from "@sat/solana";
 import { DiscoveryService } from "@sat/discovery";
-import { computeAllSignals, scoreOpportunity } from "@sat/signals";
+import { computeAllSignals, scoreOpportunity, type HistoricalBars } from "@sat/signals";
 import { assessTokenRisk } from "@sat/token-risk";
 import { PolicyEngine } from "@sat/policy-engine";
 import { createResearchProvider } from "@sat/research-agent";
@@ -27,7 +28,7 @@ import { runExperimentReplay } from "@sat/experiments";
 
 export function getOperatingMode(): OperatingMode {
   const m = (process.env.OPERATING_MODE ?? "PAPER").toUpperCase();
-  if (m === "LIVE") return "PAPER"; // hard remap — live disabled
+  if (m === "LIVE") return "PAPER";
   if (m === "DEMO" || m === "READ_ONLY" || m === "PAPER") return m;
   return "PAPER";
 }
@@ -36,9 +37,9 @@ export async function runDiscoveryCycle(db: Database = getDatabase()) {
   const market = createMarketDataProvider();
   const discovery = new DiscoveryService(market);
   const { candidates, events, mode } = await discovery.discover(20);
-  db.setCandidates(candidates);
-  db.addEvents(events);
-  db.addEvents([
+  await db.setCandidates(candidates);
+  await db.addEvents(events);
+  await db.addEvents([
     createEvent("TOKEN_DISCOVERED", `Discovery cycle complete (${mode})`, {
       payload: { count: candidates.length, provider: market.name, isDemo: market.isDemo },
     }),
@@ -46,11 +47,34 @@ export async function runDiscoveryCycle(db: Database = getDatabase()) {
   return { candidates, mode, provider: market.name, isDemo: market.isDemo };
 }
 
+async function loadHistorical(mint: string): Promise<HistoricalBars | undefined> {
+  const market = createMarketDataProvider();
+  try {
+    const [b5, b15, b1h, b4h, sol5] = await Promise.all([
+      market.getOhlcv(mint, "5m", 120),
+      market.getOhlcv(mint, "15m", 96),
+      market.getOhlcv(mint, "1h", 72),
+      market.getOhlcv(mint, "4h", 48),
+      market.getOhlcv(WSOL, "5m", 120),
+    ]);
+    return {
+      "5m": b5,
+      "15m": b15,
+      "1h": b1h,
+      "4h": b4h,
+      sol: { "5m": sol5 },
+      asOfMs: Date.now(),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function evaluateMint(
   mint: string,
   db: Database = getDatabase(),
 ): Promise<TradeProposal | null> {
-  const state = db.getState();
+  const state = await db.getState();
   let asset = state.candidates.find((c) => c.mint === mint);
   if (!asset) {
     const market = createMarketDataProvider();
@@ -61,24 +85,27 @@ export async function evaluateMint(
   const onChain = createOnChainProvider();
   const riskInputs = await onChain.getTokenRiskInputs(mint);
   const tokenRisk = assessTokenRisk(asset, riskInputs);
-  db.addTokenRisk(tokenRisk);
+  await db.addTokenRisk(tokenRisk);
 
   const policyEngine = new PolicyEngine(DEFAULT_POLICY_CONFIG);
   const { assessment: policy, events: policyEvents } = policyEngine.evaluate(asset);
-  db.addPolicy(policy);
-  db.addEvents(policyEvents);
+  await db.addPolicy(policy);
+  await db.addEvents(policyEvents);
 
+  const historical = await loadHistorical(mint);
   const { signals, events: signalEvents, regime } = computeAllSignals(
     asset,
     state.candidates.length ? state.candidates : [asset],
+    historical,
   );
-  db.addEvents(signalEvents);
+  await db.addEvents(signalEvents);
+  await db.addSignals(mint, signals);
 
   const research = await createResearchProvider().research(
     asset,
     `regime=${regime}; riskTier=${tokenRisk.riskTier}`,
   );
-  db.addResearch(research);
+  await db.addResearch(research);
 
   const scored = scoreOpportunity(asset, signals, {
     weights: DEFAULT_STRATEGY_CONFIG.weights,
@@ -96,7 +123,7 @@ export async function evaluateMint(
     explanation: scored.explanation,
     scoredAt: nowIso(),
   };
-  db.addScore(score);
+  await db.addScore(score);
 
   const requested = proposeSizeUsd(
     state.portfolio.navUsd,
@@ -115,11 +142,9 @@ export async function evaluateMint(
     dailyTurnoverUsd: state.orders
       .filter((o) => Date.now() - Date.parse(o.createdAt) < 86_400_000)
       .reduce((s, o) => s + o.filledUsd, 0),
-    lastTradeAtByMint: Object.fromEntries(
-      state.orders.map((o) => [o.mint, o.createdAt]),
-    ),
+    lastTradeAtByMint: Object.fromEntries(state.orders.map((o) => [o.mint, o.createdAt])),
   });
-  db.addEvents(riskEvents);
+  await db.addEvents(riskEvents);
 
   let status: TradeProposal["status"] = "PROPOSED";
   if (policy.decision === "REJECTED") status = "REJECTED";
@@ -128,7 +153,6 @@ export async function evaluateMint(
   else if (tokenRisk.riskTier === "HIGH_RISK" || tokenRisk.riskTier === "INSUFFICIENT_DATA")
     status = "REJECTED";
 
-  // Duplicate proposal guard
   const dup = state.proposals.find(
     (p) =>
       p.mint === mint &&
@@ -136,7 +160,7 @@ export async function evaluateMint(
       Date.now() - Date.parse(p.createdAt) < 15 * 60_000,
   );
   if (dup) {
-    db.addEvents([
+    await db.addEvents([
       createEvent("TRADE_PROPOSED", "Duplicate proposal suppressed", {
         mint,
         payload: { existingId: dup.id },
@@ -160,8 +184,8 @@ export async function evaluateMint(
     status,
     createdAt: nowIso(),
   };
-  db.addProposal(proposal);
-  db.addEvents([
+  await db.addProposal(proposal);
+  await db.addEvents([
     createEvent("TRADE_PROPOSED", `${status}: ${asset.symbol} $${proposal.sizeUsd.toFixed(0)}`, {
       mint,
       payload: { proposalId: proposal.id, status },
@@ -184,7 +208,7 @@ export async function executePaperProposal(
     throw new Error("READ_ONLY mode — paper execution disabled");
   }
 
-  const state = db.getState();
+  const state = await db.getState();
   const proposal = state.proposals.find((p) => p.id === proposalId);
   if (!proposal) throw new Error("Proposal not found");
   if (proposal.status === "REJECTED") throw new Error("Cannot execute rejected proposal");
@@ -201,7 +225,7 @@ export async function executePaperProposal(
     throw new Error("Token-risk gate — paper execution blocked");
   }
   const exec = createExecutionProvider();
-  const amount = String(Math.floor(proposal.sizeUsd * 1_000_000)); // USDC 6 dec assumption for quote
+  const amount = String(Math.floor(proposal.sizeUsd * 1_000_000));
   const quote = await exec.quote({
     inputMint: USDC,
     outputMint: proposal.mint,
@@ -232,8 +256,8 @@ export async function executePaperProposal(
     },
     isDemo: quote.isDemo || asset?.isDemo,
   });
-  db.addOrder(order);
-  db.addEvents(events);
+  await db.addOrder(order);
+  await db.addEvents(events);
 
   const applied = applyFillToPortfolio(
     state.portfolio,
@@ -241,15 +265,14 @@ export async function executePaperProposal(
     order,
     proposal.symbol,
   );
-  db.setPortfolio(applied.snapshot);
-  db.setPositions(applied.positions);
-  db.addEvents(applied.events);
-  db.pushEquity(applied.snapshot.navUsd);
+  await db.setPortfolio(applied.snapshot);
+  await db.setPositions(applied.positions);
+  await db.addEvents(applied.events);
+  await db.pushEquity(applied.snapshot.navUsd);
 
-  // Only consume the proposal on an actual (possibly partial) fill so FAILED/STALE can retry.
   if (order.status === "FILLED" || order.status === "PARTIAL") {
     proposal.status = "ACCEPTED_PAPER";
-    db.addProposal(proposal);
+    await db.addProposal(proposal);
   }
 
   return { order, plan, quote, portfolio: applied.snapshot };
@@ -265,42 +288,32 @@ export async function runFullResearchPass(db: Database = getDatabase()) {
   return proposals;
 }
 
-export function runDemoExperiment(db: Database = getDatabase()) {
-  const state = db.getState();
+export async function runDemoExperiment(db: Database = getDatabase()) {
+  const state = await db.getState();
   const start = state.equityHistory[0]?.nav ?? 100_000;
-  let equity = state.equityHistory.map((e) => e.nav);
-  if (equity.length < 10) {
-    // Synthetic short demo path for UI — labeled as demo replay, not live performance
-    equity = Array.from({ length: 60 }, (_, i) => {
-      const wave = Math.sin(i / 7) * 0.004 + i * 0.0004;
-      return start * (1 + wave);
-    });
-  }
-  const solPrices = equity.map((_, i) => 140 * (1 + i * 0.0015));
-  const btcPrices = equity.map((_, i) => 60_000 * (1 + i * 0.001));
-  const costDrag = state.orders.reduce(
-    (s, o) => s + o.spreadCostUsd + o.slippageCostUsd + o.impactCostUsd + o.networkCostUsd,
-    0,
-  );
+  const equity = state.equityHistory.map((e) => e.nav);
   const result = runExperimentReplay({
     name: "demo-paper-replay-v1",
     strategyEquity: equity,
-    solPrices,
-    btcPrices,
     startingCapital: start,
-    costDragUsd: costDrag,
+    costDragUsd: state.orders.reduce(
+      (s, o) => s + o.spreadCostUsd + o.slippageCostUsd + o.impactCostUsd + o.networkCostUsd,
+      0,
+    ),
+    dataQuality: equity.length < 10 ? "INSUFFICIENT_HISTORY" : "PAPER_EQUITY",
+    isDemo: process.env.DEMO_MODE !== "false",
   });
-  db.addExperiment(result);
+  await db.addExperiment(result);
   return result;
 }
 
-export function getSystemHealth(db: Database = getDatabase()) {
-  const state = db.getState();
+export async function getSystemHealth(db: Database = getDatabase()) {
+  const state = await db.getState();
   return {
     operatingMode: getOperatingMode(),
     liveTradingAllowed: isLiveTradingAllowed(),
-    canBroadcast: false,
-    persistence: state.mode,
+    canBroadcast: false as const,
+    persistence: db.mode,
     demoMode: process.env.DEMO_MODE !== "false",
     candidates: state.candidates.length,
     proposals: state.proposals.length,

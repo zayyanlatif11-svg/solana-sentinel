@@ -21,6 +21,13 @@ export interface PaperFillModelConfig {
   staleQuoteMs: number;
 }
 
+function envProb(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (v == null || v === "") return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export const DEFAULT_PAPER_FILL_CONFIG: PaperFillModelConfig = {
   spreadBps: 8,
   baseSlippageBps: 12,
@@ -28,8 +35,8 @@ export const DEFAULT_PAPER_FILL_CONFIG: PaperFillModelConfig = {
   networkCostUsd: 0.02,
   latencyMsMin: 80,
   latencyMsMax: 450,
-  failProbability: 0.03,
-  partialProbability: 0.12,
+  failProbability: envProb("PAPER_FAIL_PROBABILITY", 0.03),
+  partialProbability: envProb("PAPER_PARTIAL_PROBABILITY", 0.12),
   staleQuoteMs: 15_000,
 };
 

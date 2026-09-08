@@ -72,6 +72,22 @@ export const CandidateAssetSchema = z.object({
 });
 export type CandidateAsset = z.infer<typeof CandidateAssetSchema>;
 
+export const OhlcvIntervalSchema = z.enum(["1m", "5m", "15m", "1h", "4h"]);
+export type OhlcvInterval = z.infer<typeof OhlcvIntervalSchema>;
+
+/** Provider-agnostic OHLCV bar. `timestamp` is Unix epoch milliseconds. */
+export const OhlcvBarSchema = z
+  .object({
+    timestamp: z.number().int().nonnegative(),
+    open: z.number().finite(),
+    high: z.number().finite(),
+    low: z.number().finite(),
+    close: z.number().finite(),
+    volume: z.number().nonnegative().finite(),
+  })
+  .refine((b) => b.high >= b.low, { message: "high must be >= low" });
+export type OhlcvBar = z.infer<typeof OhlcvBarSchema>;
+
 export const SignalNameSchema = z.enum([
   "momentum",
   "volume",
@@ -80,6 +96,7 @@ export const SignalNameSchema = z.enum([
   "volatility",
   "market_regime",
   "on_chain",
+  "trend_breakout",
 ]);
 export type SignalName = z.infer<typeof SignalNameSchema>;
 
@@ -113,6 +130,10 @@ export const TokenRiskAssessmentSchema = z.object({
     tokenAgeHours: z.number().nullable(),
     metadataQuality: z.number().min(0).max(1).nullable(),
     estimatedPriceImpactPct: z.number().nullable(),
+    top5HolderConcentrationPct: z.number().nullable().optional(),
+    top10HolderConcentrationPct: z.number().nullable().optional(),
+    transferHook: z.boolean().nullable().optional(),
+    token2022Extensions: z.array(z.string()).nullable().optional(),
     missingFields: z.array(z.string()).default([]),
   }),
   assessedAt: z.string().datetime(),

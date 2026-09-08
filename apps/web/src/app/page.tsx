@@ -6,6 +6,7 @@ import { usd, pct } from "@/lib/utils";
 type Health = {
   operatingMode: string;
   liveTradingAllowed: boolean;
+  canBroadcast: boolean;
   persistence: string;
   demoMode: boolean;
   navUsd: number;
@@ -82,13 +83,15 @@ type StatePayload = {
       sharpe: number | null;
       warnings: string[];
       costDragUsd: number;
-    };
+    } | null;
     baselines: {
-      solBuyHold: { totalReturnPct: number };
-      cash: { totalReturnPct: number };
-      mechanicalMomentum: { totalReturnPct: number };
+      solBuyHold: { totalReturnPct: number } | null;
+      cash: { totalReturnPct: number } | null;
+      mechanicalMomentum: { totalReturnPct: number } | null;
     };
     notes: string[];
+    dataQuality?: string;
+    isDemo?: boolean;
   }>;
   equityHistory: Array<{ t: string; nav: number }>;
   health: Health;
@@ -208,8 +211,8 @@ export default function DashboardPage() {
     ) ?? 0;
 
   return (
-    <div className="min-h-screen">
-      <div className="demo-banner px-4 py-2 text-center text-sm">
+    <div className="min-h-screen" data-testid="dashboard-root">
+      <div className="demo-banner px-4 py-2 text-center text-sm" data-testid="banner-mode">
         <strong className="brand">DEMO / PAPER ONLY</strong>
         <span className="mx-2">·</span>
         Live broadcasting is hard-disabled. Not investment advice. Simulated fills only.
@@ -228,10 +231,23 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="anim-fade anim-delay-1 flex flex-wrap items-center gap-2">
-            <Pill tone="demo">{data?.operatingMode ?? "…"}</Pill>
-            <Pill>LIVE OFF</Pill>
+            <Pill tone="demo">
+              <span data-testid="pill-operating-mode">{data?.operatingMode ?? "…"}</span>
+            </Pill>
+            <Pill>
+              <span data-testid="health-live-allowed">
+                LIVE {data?.health?.liveTradingAllowed ? "ON" : "OFF"}
+              </span>
+            </Pill>
+            <Pill>
+              <span data-testid="health-can-broadcast">
+                canBroadcast={String(data?.health?.canBroadcast ?? false)}
+              </span>
+            </Pill>
             <Pill tone={data?.health?.persistence === "memory" ? "warn" : "good"}>
-              {data?.health?.persistence ?? "…"} store
+              <span data-testid="health-persistence">
+                {data?.health?.persistence ?? "…"} store
+              </span>
             </Pill>
             <span className="live-dot ml-2 h-2 w-2 rounded-full bg-[var(--accent)]" />
           </div>
@@ -276,30 +292,41 @@ export default function DashboardPage() {
               </div>
               <div className="panel p-4">
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Benchmarks</p>
-                {data.experiments[0] ? (
+                {data.experiments[0]?.dataQuality === "INSUFFICIENT_HISTORY" ||
+                !data.experiments[0]?.strategyMetrics ? (
+                  <p className="mt-3 text-sm text-[var(--warn)]" data-testid="experiment-insufficient">
+                    INSUFFICIENT HISTORY — metrics hidden. DEMO DATA / not a verified performance path.
+                  </p>
+                ) : data.experiments[0] ? (
                   <ul className="mt-3 space-y-2 text-sm">
                     <li className="flex justify-between">
-                      <span>Strategy (demo)</span>
+                      <span>Strategy (DEMO DATA)</span>
                       <span className="mono">
                         {pct(data.experiments[0].strategyMetrics.totalReturnPct)}
                       </span>
                     </li>
                     <li className="flex justify-between">
-                      <span>SOL B&H</span>
+                      <span>SOL B&amp;H</span>
                       <span className="mono">
-                        {pct(data.experiments[0].baselines.solBuyHold.totalReturnPct)}
+                        {data.experiments[0].baselines.solBuyHold
+                          ? pct(data.experiments[0].baselines.solBuyHold.totalReturnPct)
+                          : "—"}
                       </span>
                     </li>
                     <li className="flex justify-between">
                       <span>Cash</span>
                       <span className="mono">
-                        {pct(data.experiments[0].baselines.cash.totalReturnPct)}
+                        {data.experiments[0].baselines.cash
+                          ? pct(data.experiments[0].baselines.cash.totalReturnPct)
+                          : "—"}
                       </span>
                     </li>
                     <li className="flex justify-between">
                       <span>Mechanical</span>
                       <span className="mono">
-                        {pct(data.experiments[0].baselines.mechanicalMomentum.totalReturnPct)}
+                        {data.experiments[0].baselines.mechanicalMomentum
+                          ? pct(data.experiments[0].baselines.mechanicalMomentum.totalReturnPct)
+                          : "—"}
                       </span>
                     </li>
                   </ul>
@@ -319,6 +346,7 @@ export default function DashboardPage() {
                   <button
                     className="border border-[var(--line)] bg-[var(--bg-2)] px-3 py-1.5 text-xs hover:border-[var(--accent)]"
                     disabled={pending}
+                    data-testid="btn-research-pass"
                     onClick={() => run("research_pass")}
                   >
                     Run research pass
@@ -326,6 +354,7 @@ export default function DashboardPage() {
                   <button
                     className="border border-[var(--line)] bg-[var(--bg-2)] px-3 py-1.5 text-xs hover:border-[var(--accent)]"
                     disabled={pending}
+                    data-testid="btn-experiment"
                     onClick={() => run("experiment")}
                   >
                     Replay experiment
@@ -333,12 +362,17 @@ export default function DashboardPage() {
                   <button
                     className="border border-[var(--line)] bg-[var(--bg-2)] px-3 py-1.5 text-xs hover:border-[var(--demo)]"
                     disabled={pending}
+                    data-testid="btn-reset"
                     onClick={() => run("reset")}
                   >
                     Reset demo
                   </button>
                 </div>
-                {msg && <p className="mt-3 text-xs text-[var(--accent-2)]">{msg}</p>}
+                {msg && (
+                  <p className="mt-3 text-xs text-[var(--accent-2)]" data-testid="action-msg">
+                    {msg}
+                  </p>
+                )}
               </div>
             </section>
 
@@ -355,6 +389,7 @@ export default function DashboardPage() {
                     return (
                       <button
                         key={c.mint}
+                        data-testid={`candidate-${c.symbol}`}
                         onClick={() => setSelectedMint(c.mint)}
                         className={`flex w-full items-center justify-between border-b border-[var(--line)] px-4 py-3 text-left hover:bg-[var(--bg-2)] ${
                           selectedMint === c.mint ? "bg-[var(--bg-2)]" : ""
@@ -374,7 +409,7 @@ export default function DashboardPage() {
                                       : "warn"
                                 }
                               >
-                                {prop.status}
+                                <span data-testid={`proposal-status-${c.symbol}`}>{prop.status}</span>
                               </Pill>
                             )}
                           </div>
@@ -420,6 +455,7 @@ export default function DashboardPage() {
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
                             className="border border-[var(--accent)] bg-[var(--bg-3)] px-3 py-2 text-xs"
+                            data-testid="btn-paper-execute"
                             disabled={
                               pending ||
                               selectedProposal.status === "REJECTED" ||
@@ -559,6 +595,7 @@ export default function DashboardPage() {
                   {data.positions.map((p) => (
                     <div
                       key={p.mint}
+                      data-testid={`position-${p.symbol}`}
                       className="flex items-center justify-between border-b border-[var(--line)] px-2 py-2 text-sm"
                     >
                       <div>
@@ -586,7 +623,11 @@ export default function DashboardPage() {
                     <p className="p-2 text-sm text-[var(--muted)]">No paper orders yet</p>
                   )}
                   {data.orders.map((o) => (
-                    <div key={o.id} className="border-b border-[var(--line)] px-2 py-2 text-sm">
+                    <div
+                      key={o.id}
+                      data-testid="ledger-order"
+                      className="border-b border-[var(--line)] px-2 py-2 text-sm"
+                    >
                       <div className="flex justify-between">
                         <span>
                           {o.side} · <span className="mono">{o.status}</span>
@@ -625,7 +666,8 @@ export default function DashboardPage() {
                 <p className="mt-2 text-sm text-[var(--muted)]">
                   {data.experiments[0].notes.join(" · ")}
                 </p>
-                {data.experiments[0].strategyMetrics.warnings.length > 0 && (
+                {data.experiments[0].strategyMetrics?.warnings &&
+                  data.experiments[0].strategyMetrics.warnings.length > 0 && (
                   <p className="mt-2 text-xs text-[var(--warn)]">
                     {data.experiments[0].strategyMetrics.warnings.join(" · ")}
                   </p>

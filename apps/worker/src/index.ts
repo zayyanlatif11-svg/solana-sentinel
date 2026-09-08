@@ -21,8 +21,8 @@ async function main() {
   );
 
   const proposals = await runFullResearchPass(db);
-  const experiment = runDemoExperiment(db);
-  const health = getSystemHealth(db);
+  const experiment = await runDemoExperiment(db);
+  const health = await getSystemHealth(db);
 
   console.log(
     JSON.stringify(

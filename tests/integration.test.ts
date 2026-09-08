@@ -14,7 +14,7 @@ describe("signals + scoring", () => {
   it("emits modular signals with confidence", () => {
     const asset = getDemoCandidates().find((c) => c.symbol === "RAY")!;
     const { signals } = computeAllSignals(asset, getDemoCandidates());
-    expect(signals.length).toBe(7);
+    expect(signals.length).toBe(8);
     for (const s of signals) {
       expect(s.normalizedScore).toBeGreaterThanOrEqual(-1);
       expect(s.normalizedScore).toBeLessThanOrEqual(1);

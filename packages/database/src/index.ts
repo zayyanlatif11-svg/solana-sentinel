@@ -9,151 +9,136 @@ import {
   type PolicyAssessment,
   type OpportunityScore,
   type ResearchBrief,
+  type SignalResult,
 } from "@sat/shared";
 import type { ExperimentResult } from "@sat/experiments";
 import { createInitialPortfolio } from "@sat/portfolio";
+import type { Database, StoreSnapshot, StoredSignal } from "./types";
+import { PostgresDatabase } from "./postgres";
 
-export interface StoreSnapshot {
-  mode: "memory" | "postgres";
-  candidates: CandidateAsset[];
-  proposals: TradeProposal[];
-  orders: PaperOrder[];
-  positions: Position[];
-  portfolio: PortfolioSnapshot;
-  events: SystemEvent[];
-  tokenRisk: TokenRiskAssessment[];
-  policies: PolicyAssessment[];
-  scores: OpportunityScore[];
-  research: ResearchBrief[];
-  experiments: ExperimentResult[];
-  equityHistory: Array<{ t: string; nav: number }>;
-}
-
-export interface Database {
-  readonly mode: "memory" | "postgres";
-  getState(): StoreSnapshot;
-  setCandidates(c: CandidateAsset[]): void;
-  addProposal(p: TradeProposal): void;
-  addOrder(o: PaperOrder): void;
-  setPositions(p: Position[]): void;
-  setPortfolio(s: PortfolioSnapshot): void;
-  addEvents(e: SystemEvent[]): void;
-  addTokenRisk(a: TokenRiskAssessment): void;
-  addPolicy(a: PolicyAssessment): void;
-  addScore(s: OpportunityScore): void;
-  addResearch(r: ResearchBrief): void;
-  addExperiment(e: ExperimentResult): void;
-  pushEquity(nav: number): void;
-  reset(startingCapital: number): void;
-}
+export type { Database, StoreSnapshot, StoredSignal };
 
 export class InMemoryDatabase implements Database {
   readonly mode = "memory" as const;
   private state: StoreSnapshot;
 
   constructor(startingCapital = Number(process.env.PAPER_STARTING_CAPITAL_USD ?? 100_000)) {
-    const { snapshot, positions } = createInitialPortfolio(startingCapital);
-    this.state = {
-      mode: "memory",
-      candidates: [],
-      proposals: [],
-      orders: [],
-      positions,
-      portfolio: snapshot,
-      events: [],
-      tokenRisk: [],
-      policies: [],
-      scores: [],
-      research: [],
-      experiments: [],
-      equityHistory: [{ t: snapshot.timestamp, nav: snapshot.navUsd }],
-    };
+    this.state = emptyState(startingCapital, "memory");
   }
 
-  getState(): StoreSnapshot {
+  async getState(): Promise<StoreSnapshot> {
     return structuredClone(this.state);
   }
 
-  setCandidates(c: CandidateAsset[]) {
+  async setCandidates(c: CandidateAsset[]) {
     this.state.candidates = c;
   }
-  addProposal(p: TradeProposal) {
+  async addProposal(p: TradeProposal) {
     this.state.proposals = [p, ...this.state.proposals.filter((x) => x.id !== p.id)];
   }
-  addOrder(o: PaperOrder) {
+  async addOrder(o: PaperOrder) {
     this.state.orders.unshift(o);
   }
-  setPositions(p: Position[]) {
+  async setPositions(p: Position[]) {
     this.state.positions = p;
   }
-  setPortfolio(s: PortfolioSnapshot) {
+  async setPortfolio(s: PortfolioSnapshot) {
     this.state.portfolio = s;
   }
-  addEvents(e: SystemEvent[]) {
+  async addEvents(e: SystemEvent[]) {
     this.state.events.unshift(...e);
     this.state.events = this.state.events.slice(0, 500);
   }
-  addTokenRisk(a: TokenRiskAssessment) {
+  async addTokenRisk(a: TokenRiskAssessment) {
     this.state.tokenRisk = [a, ...this.state.tokenRisk.filter((x) => x.mint !== a.mint)].slice(
       0,
       200,
     );
   }
-  addPolicy(a: PolicyAssessment) {
+  async addPolicy(a: PolicyAssessment) {
     this.state.policies = [a, ...this.state.policies.filter((x) => x.mint !== a.mint)].slice(
       0,
       200,
     );
   }
-  addScore(s: OpportunityScore) {
+  async addScore(s: OpportunityScore) {
     this.state.scores = [s, ...this.state.scores.filter((x) => x.mint !== s.mint)].slice(0, 200);
   }
-  addResearch(r: ResearchBrief) {
+  async addResearch(r: ResearchBrief) {
     this.state.research = [r, ...this.state.research.filter((x) => x.mint !== r.mint)].slice(
       0,
       200,
     );
   }
-  addExperiment(e: ExperimentResult) {
+  async addExperiment(e: ExperimentResult) {
     this.state.experiments.unshift(e);
   }
-  pushEquity(nav: number) {
+  async addSignals(mint: string, signals: SignalResult[]) {
+    this.state.signals = [
+      ...signals.map((s) => ({ mint, ...s }) satisfies StoredSignal),
+      ...this.state.signals.filter((x) => x.mint !== mint),
+    ].slice(0, 500);
+  }
+  async pushEquity(nav: number) {
     this.state.equityHistory.push({ t: new Date().toISOString(), nav });
     if (this.state.equityHistory.length > 500) {
       this.state.equityHistory = this.state.equityHistory.slice(-500);
     }
   }
-  reset(startingCapital: number) {
-    const { snapshot, positions } = createInitialPortfolio(startingCapital);
-    this.state = {
-      mode: "memory",
-      candidates: [],
-      proposals: [],
-      orders: [],
-      positions,
-      portfolio: snapshot,
-      events: [],
-      tokenRisk: [],
-      policies: [],
-      scores: [],
-      research: [],
-      experiments: [],
-      equityHistory: [{ t: snapshot.timestamp, nav: snapshot.navUsd }],
-    };
+  async reset(startingCapital: number) {
+    this.state = emptyState(startingCapital, "memory");
   }
+}
+
+function emptyState(startingCapital: number, mode: StoreSnapshot["mode"]): StoreSnapshot {
+  const { snapshot, positions } = createInitialPortfolio(startingCapital);
+  return {
+    mode,
+    candidates: [],
+    proposals: [],
+    orders: [],
+    positions,
+    portfolio: snapshot,
+    events: [],
+    tokenRisk: [],
+    policies: [],
+    scores: [],
+    research: [],
+    experiments: [],
+    signals: [],
+    equityHistory: [{ t: snapshot.timestamp, nav: snapshot.navUsd }],
+  };
 }
 
 let singleton: Database | null = null;
 
+export function databaseUrl(): string | undefined {
+  const url = process.env.DATABASE_URL?.trim();
+  return url ? url : undefined;
+}
+
 export function getDatabase(): Database {
   if (!singleton) {
-    // Postgres path reserved — ship migrations; use memory unless DATABASE_URL wired later
-    singleton = new InMemoryDatabase();
+    const url = databaseUrl();
+    singleton = url
+      ? new PostgresDatabase(url)
+      : new InMemoryDatabase();
   }
   return singleton;
 }
 
-export function resetDatabaseForTests(startingCapital = 100_000): Database {
-  singleton = new InMemoryDatabase(startingCapital);
-  return singleton;
+export function resetDatabaseForTests(startingCapital = 100_000): InMemoryDatabase {
+  const mem = new InMemoryDatabase(startingCapital);
+  singleton = mem;
+  return mem;
 }
+
+export async function closeDatabaseForTests(): Promise<void> {
+  if (singleton && singleton instanceof PostgresDatabase) {
+    await singleton.close();
+  }
+  singleton = null;
+}
+
+export { PostgresDatabase };
+export { STORE_SCHEMA_SQL } from "./schema-sql";

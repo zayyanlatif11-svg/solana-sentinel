@@ -8,6 +8,11 @@ import {
   nowIso,
 } from "@sat/shared";
 
+export type ExperimentDataQuality =
+  | "PAPER_EQUITY"
+  | "INSUFFICIENT_HISTORY"
+  | "DEMO_DATA";
+
 export interface ExperimentConfig {
   id: string;
   name: string;
@@ -19,14 +24,16 @@ export interface ExperimentConfig {
 
 export interface ExperimentResult {
   experiment: ExperimentConfig;
-  strategyMetrics: PerformanceMetrics;
+  strategyMetrics: PerformanceMetrics | null;
   baselines: {
-    cash: PerformanceMetrics;
-    solBuyHold: PerformanceMetrics;
+    cash: PerformanceMetrics | null;
+    solBuyHold: PerformanceMetrics | null;
     btcBuyHold: PerformanceMetrics | null;
-    mechanicalMomentum: PerformanceMetrics;
+    mechanicalMomentum: PerformanceMetrics | null;
   };
   notes: string[];
+  dataQuality: ExperimentDataQuality;
+  isDemo: boolean;
 }
 
 export function createExperiment(
@@ -43,55 +50,76 @@ export function createExperiment(
   };
 }
 
-/** Replay a simple equity path and compare to baselines. Does not fabricate live performance. */
+/** Replay observed equity only. Does not invent SOL/BTC paths or sine-wave performance. */
 export function runExperimentReplay(params: {
   name: string;
   strategyEquity: number[];
-  solPrices: number[];
+  solPrices?: number[];
   btcPrices?: number[];
   startingCapital: number;
   costDragUsd?: number;
   mechanicalEquity?: number[];
+  dataQuality?: ExperimentDataQuality;
+  isDemo?: boolean;
 }): ExperimentResult {
   const experiment = createExperiment(params.name);
-  const cashSeries = params.strategyEquity.map(() => params.startingCapital);
-  const solBh = buyAndHoldSeries(
-    params.startingCapital,
-    params.solPrices[0] ?? 1,
-    params.solPrices,
-  );
-  const btcBh =
-    params.btcPrices && params.btcPrices.length
-      ? buyAndHoldSeries(
-          params.startingCapital,
-          params.btcPrices[0] ?? 1,
-          params.btcPrices,
-        )
-      : null;
-
-  const mechanical =
-    params.mechanicalEquity ??
-    params.strategyEquity.map((v, i) => {
-      // Simple mechanical baseline: half cash / half SOL B&H blend
-      const sol = solBh[i] ?? params.startingCapital;
-      return 0.5 * params.startingCapital + 0.5 * sol;
-    });
+  const isDemo = params.isDemo ?? true;
+  const insufficient = params.strategyEquity.length < 10;
+  const dataQuality: ExperimentDataQuality =
+    params.dataQuality ?? (insufficient ? "INSUFFICIENT_HISTORY" : "PAPER_EQUITY");
 
   const notes = [
-    "Results are from deterministic replay / demo paths — not live trading performance",
+    isDemo ? "DEMO DATA — not verified live performance" : "PAPER equity replay — not live trading performance",
     `Strategy config ${experiment.strategy.version}; risk ${experiment.risk.version}`,
     `Data source: ${experiment.dataSource}`,
   ];
+
+  if (insufficient) {
+    notes.unshift(
+      "INSUFFICIENT HISTORY — metrics hidden rather than inventing a trajectory",
+    );
+    return {
+      experiment,
+      strategyMetrics: null,
+      baselines: {
+        cash: null,
+        solBuyHold: null,
+        btcBuyHold: null,
+        mechanicalMomentum: null,
+      },
+      notes,
+      dataQuality: "INSUFFICIENT_HISTORY",
+      isDemo,
+    };
+  }
+
+  const cashSeries = params.strategyEquity.map(() => params.startingCapital);
+  const solBh =
+    params.solPrices && params.solPrices.length >= 2
+      ? buyAndHoldSeries(params.startingCapital, params.solPrices[0] ?? 1, params.solPrices)
+      : null;
+  const btcBh =
+    params.btcPrices && params.btcPrices.length >= 2
+      ? buyAndHoldSeries(params.startingCapital, params.btcPrices[0] ?? 1, params.btcPrices)
+      : null;
+  const mechanical = params.mechanicalEquity
+    ? computePerformance(params.mechanicalEquity)
+    : null;
+
+  if (!solBh) notes.push("SOL buy-and-hold omitted — no historical SOL series supplied");
+  if (!btcBh) notes.push("BTC buy-and-hold omitted — no historical BTC series supplied");
 
   return {
     experiment,
     strategyMetrics: computePerformance(params.strategyEquity, params.costDragUsd ?? 0),
     baselines: {
       cash: computePerformance(cashSeries),
-      solBuyHold: computePerformance(solBh),
+      solBuyHold: solBh ? computePerformance(solBh) : null,
       btcBuyHold: btcBh ? computePerformance(btcBh) : null,
-      mechanicalMomentum: computePerformance(mechanical),
+      mechanicalMomentum: mechanical,
     },
     notes,
+    dataQuality,
+    isDemo,
   };
 }

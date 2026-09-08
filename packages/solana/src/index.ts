@@ -17,7 +17,11 @@ export const UNKNOWN_ONCHAIN_RISK: OnChainRiskInput = {
   freezeAuthority: null,
   permanentDelegate: null,
   transferRestrictions: null,
+  transferHook: null,
+  token2022Extensions: null,
   topHolderConcentrationPct: null,
+  top5HolderConcentrationPct: null,
+  top10HolderConcentrationPct: null,
   exitLiquidityUsd: null,
   estimatedPriceImpactPct: null,
   metadataQuality: null,
@@ -29,13 +33,115 @@ function authorityEnabled(value: unknown): boolean | null {
   return true;
 }
 
-function combineAuthority(
-  fromTokenInfo: boolean | null,
-  hintedByAuthorities: boolean,
-): boolean | null {
-  if (fromTokenInfo === true || hintedByAuthorities) return true;
-  if (fromTokenInfo === false) return false;
-  return null;
+type MintExtensions = Record<string, unknown> | null | undefined;
+
+const KNOWN_EXTENSION_KEYS = [
+  "transfer_fee_config",
+  "transfer_hook",
+  "permanent_delegate",
+  "default_account_state",
+  "confidential_transfer_mint",
+  "interest_bearing_config",
+  "non_transferable",
+  "mint_close_authority",
+  "metadata_pointer",
+  "metadata",
+  "pausable",
+  "scaled_ui_amount",
+  "confidential_transfer_fee_config",
+  "group_pointer",
+  "group_member_pointer",
+  "transfer_fee_amount",
+] as const;
+
+export function parseMintExtensions(ext: MintExtensions): {
+  extensions: string[] | null;
+  permanentDelegate: boolean | null;
+  transferHook: boolean | null;
+  transferRestrictions: boolean | null;
+} {
+  if (ext == null || typeof ext !== "object") {
+    return {
+      extensions: null,
+      permanentDelegate: null,
+      transferHook: null,
+      transferRestrictions: null,
+    };
+  }
+  const keys = Object.keys(ext).filter((k) => ext[k] != null);
+  const listed = keys.filter((k) =>
+    (KNOWN_EXTENSION_KEYS as readonly string[]).includes(k),
+  );
+  const permanent = ext.permanent_delegate;
+  let permanentDelegate: boolean | null = false;
+  if (permanent && typeof permanent === "object") {
+    const delegate = (permanent as { delegate?: unknown }).delegate;
+    permanentDelegate = authorityEnabled(delegate) === true;
+  } else if ("permanent_delegate" in ext) {
+    permanentDelegate = authorityEnabled(permanent) === true;
+  }
+
+  const hook = ext.transfer_hook;
+  let transferHook = false;
+  if ("transfer_hook" in ext) {
+    if (hook && typeof hook === "object") {
+      const programId = (hook as { program_id?: unknown }).program_id;
+      transferHook = authorityEnabled(programId) === true;
+    } else {
+      transferHook = Boolean(hook);
+    }
+  }
+
+  const nonTransferable = "non_transferable" in ext && ext.non_transferable != null;
+  const frozenDefault =
+    typeof ext.default_account_state === "object" &&
+    ext.default_account_state != null &&
+    String((ext.default_account_state as { state?: unknown }).state ?? "")
+      .toLowerCase()
+      .includes("freeze");
+  const transferRestrictions = transferHook || nonTransferable || frozenDefault;
+
+  return {
+    extensions: listed.length ? listed : [],
+    permanentDelegate,
+    transferHook,
+    transferRestrictions,
+  };
+}
+
+export function concentrationFromLargestAccounts(
+  accounts: Array<{ amount?: string; uiAmount?: number | null; uiAmountString?: string }>,
+  supplyRaw: string | number | null,
+): { top5: number | null; top10: number | null; topN: number | null } {
+  if (supplyRaw == null) {
+    return { top5: null, top10: null, topN: null };
+  }
+  const supply = typeof supplyRaw === "string" ? Number(supplyRaw) : Number(supplyRaw);
+  if (!Number.isFinite(supply) || supply <= 0) {
+    return { top5: null, top10: null, topN: null };
+  }
+  const amounts = accounts
+    .map((a) => {
+      if (a.amount != null && a.amount !== "") {
+        const n = Number(a.amount);
+        return Number.isFinite(n) ? n : 0;
+      }
+      if (a.uiAmountString) {
+        const n = Number(a.uiAmountString);
+        return Number.isFinite(n) ? n : 0;
+      }
+      return typeof a.uiAmount === "number" ? a.uiAmount : 0;
+    })
+    .filter((n) => n > 0)
+    .sort((a, b) => b - a);
+  if (!amounts.length) return { top5: null, top10: null, topN: null };
+  const pct = (n: number) =>
+    Math.min(100, (amounts.slice(0, n).reduce((s, x) => s + x, 0) / supply) * 100);
+  return {
+    top5: pct(5),
+    top10: pct(10),
+    topN: pct(amounts.length),
+  };
 }
 
 export class DemoOnChainProvider implements OnChainProvider {
@@ -52,7 +158,11 @@ export class DemoOnChainProvider implements OnChainProvider {
         freezeAuthority: true,
         permanentDelegate: true,
         transferRestrictions: true,
+        transferHook: true,
+        token2022Extensions: ["permanent_delegate", "transfer_hook"],
         topHolderConcentrationPct: 92,
+        top5HolderConcentrationPct: 88,
+        top10HolderConcentrationPct: 92,
         exitLiquidityUsd: 3_000,
         estimatedPriceImpactPct: 18,
         metadataQuality: 0.2,
@@ -64,7 +174,11 @@ export class DemoOnChainProvider implements OnChainProvider {
       freezeAuthority: false,
       permanentDelegate: false,
       transferRestrictions: false,
+      transferHook: false,
+      token2022Extensions: [],
       topHolderConcentrationPct: 28,
+      top5HolderConcentrationPct: 22,
+      top10HolderConcentrationPct: 28,
       exitLiquidityUsd: demo.liquidityUsd ?? 1_000_000,
       estimatedPriceImpactPct: 0.35,
       metadataQuality: 0.85,
@@ -73,9 +187,11 @@ export class DemoOnChainProvider implements OnChainProvider {
 }
 
 /**
- * Helius DAS adapter using official getAsset JSON-RPC.
- * Docs: https://www.helius.dev/docs/api-reference/das/getasset
- * Mint/freeze authority live on token_info (not authorities[].type).
+ * Helius DAS + Solana RPC adapter.
+ * - getAsset docs: https://www.helius.dev/docs/api-reference/das/getasset
+ * - Token-2022 mint_extensions: https://www.helius.dev/docs/das/fungible-token-extension
+ * - Mint/freeze live on token_info (not authorities[].type).
+ * - Holders: getTokenLargestAccounts + getTokenSupply (Solana JSON-RPC).
  */
 export class HeliusOnChainProvider implements OnChainProvider {
   readonly name = "helius";
@@ -97,76 +213,112 @@ export class HeliusOnChainProvider implements OnChainProvider {
 
   async getTokenRiskInputs(mint: string): Promise<OnChainRiskInput> {
     try {
-      const res = await fetch(this.endpoint(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "sat-getAsset",
-          method: "getAsset",
-          params: {
-            id: mint,
-            options: { showFungible: true },
-          },
-        }),
+      const assetJson = await this.rpc("getAsset", {
+        id: mint,
+        options: { showFungible: true },
       });
-      if (!res.ok) throw new Error(`Helius HTTP ${res.status}`);
-      const json = (await res.json()) as {
-        result?: {
-          token_info?: {
-            token_program?: string;
-            decimals?: number;
-            supply?: number;
-            mint_authority?: string | null;
-            freeze_authority?: string | null;
-            price_info?: { price_per_token?: number };
-          };
-          authorities?: Array<{ type?: string; address?: string; scopes?: string[] }>;
-          content?: { metadata?: { name?: string; symbol?: string } };
-        };
-        error?: { message?: string };
-      };
-      if (json.error || !json.result) throw new Error(json.error?.message ?? "no result");
+      const result = assetJson.result as
+        | {
+            token_info?: {
+              token_program?: string;
+              supply?: number | string;
+              mint_authority?: string | null;
+              freeze_authority?: string | null;
+            };
+            mint_extensions?: Record<string, unknown>;
+            content?: { metadata?: { name?: string; symbol?: string } };
+          }
+        | undefined;
+      if (!result) throw new Error("no result");
 
-      const program = json.result.token_info?.token_program;
+      const program = result.token_info?.token_program;
       let tokenProgram: OnChainRiskInput["tokenProgram"] = "UNKNOWN";
       if (program === TOKEN_PROGRAM) tokenProgram = "TOKEN";
       if (program === TOKEN_2022_PROGRAM) tokenProgram = "TOKEN_2022";
 
-      const authorities = json.result.authorities ?? [];
-      const authorityBlob = authorities
-        .map((a) => `${a.type ?? ""} ${(a.scopes ?? []).join(" ")}`)
-        .join(" ")
-        .toLowerCase();
-      const hintedMint = /\bmint\b/.test(authorityBlob);
-      const hintedFreeze = /\bfreeze\b/.test(authorityBlob);
-
-      const meta = json.result.content?.metadata;
+      const meta = result.content?.metadata;
       const metadataQuality = meta?.name && meta?.symbol ? 0.8 : 0.3;
+
+      let extensions: ReturnType<typeof parseMintExtensions> = {
+        extensions: tokenProgram === "TOKEN" ? [] : null,
+        permanentDelegate: tokenProgram === "TOKEN" ? false : null,
+        transferHook: tokenProgram === "TOKEN" ? false : null,
+        transferRestrictions: tokenProgram === "TOKEN" ? false : null,
+      };
+      if (tokenProgram === "TOKEN_2022") {
+        extensions = parseMintExtensions(result.mint_extensions);
+      }
+
+      let top5: number | null = null;
+      let top10: number | null = null;
+      let topN: number | null = null;
+      try {
+        const [largest, supply] = await Promise.all([
+          this.rpc("getTokenLargestAccounts", [mint]),
+          this.rpc("getTokenSupply", [mint]),
+        ]);
+        const largestValue = (largest.result as { value?: unknown } | undefined)?.value;
+        const accounts = (Array.isArray(largestValue) ? largestValue : []) as Array<{
+          amount?: string;
+          uiAmount?: number | null;
+          uiAmountString?: string;
+        }>;
+        const supplyValue = (supply.result as { value?: { amount?: string } } | undefined)?.value;
+        const supplyAmount =
+          supplyValue?.amount ??
+          (result.token_info?.supply != null ? String(result.token_info.supply) : null);
+        const conc = concentrationFromLargestAccounts(accounts, supplyAmount ?? null);
+        top5 = conc.top5;
+        top10 = conc.top10;
+        topN = conc.topN;
+      } catch {
+        top5 = null;
+        top10 = null;
+        topN = null;
+      }
 
       return {
         tokenProgram,
-        mintAuthority: combineAuthority(
-          authorityEnabled(json.result.token_info?.mint_authority),
-          hintedMint,
-        ),
-        freezeAuthority: combineAuthority(
-          authorityEnabled(json.result.token_info?.freeze_authority),
-          hintedFreeze,
-        ),
-        permanentDelegate: null,
-        transferRestrictions: null,
-        topHolderConcentrationPct: null,
+        mintAuthority: authorityEnabled(result.token_info?.mint_authority),
+        freezeAuthority: authorityEnabled(result.token_info?.freeze_authority),
+        permanentDelegate: extensions.permanentDelegate,
+        transferRestrictions: extensions.transferRestrictions,
+        transferHook: extensions.transferHook,
+        token2022Extensions: extensions.extensions,
+        topHolderConcentrationPct: top5 ?? topN,
+        top5HolderConcentrationPct: top5,
+        top10HolderConcentrationPct: top10,
         exitLiquidityUsd: null,
         estimatedPriceImpactPct: null,
         metadataQuality,
       };
     } catch {
-      // Never substitute a synthetic "clean" profile for unknown mints — that understates risk.
       const knownDemo = getDemoCandidates().some((c) => c.mint === mint);
       if (knownDemo) return this.fallback.getTokenRiskInputs(mint);
       return { ...UNKNOWN_ONCHAIN_RISK };
     }
+  }
+
+  private async rpc(
+    method: string,
+    params: unknown,
+  ): Promise<{ result?: Record<string, unknown>; error?: { message?: string } }> {
+    const body =
+      method === "getAsset"
+        ? { jsonrpc: "2.0", id: `sat-${method}`, method, params }
+        : { jsonrpc: "2.0", id: `sat-${method}`, method, params };
+    const res = await fetch(this.endpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Helius HTTP ${res.status}`);
+    const json = (await res.json()) as {
+      result?: Record<string, unknown>;
+      error?: { message?: string };
+    };
+    if (json.error) throw new Error(json.error.message ?? method);
+    return json;
   }
 }
 
@@ -176,7 +328,6 @@ export function createOnChainProvider(): OnChainProvider {
   return new DemoOnChainProvider();
 }
 
-/** Lightweight Solana helpers — @solana/kit preferred for future RPC work. */
 export const KNOWN_PROGRAMS = {
   TOKEN: TOKEN_PROGRAM,
   TOKEN_2022: TOKEN_2022_PROGRAM,
