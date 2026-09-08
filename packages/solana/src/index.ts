@@ -10,13 +10,42 @@ export interface OnChainProvider {
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
+/** Conservative unknown profile — never pretend mint/freeze authorities are revoked. */
+export const UNKNOWN_ONCHAIN_RISK: OnChainRiskInput = {
+  tokenProgram: "UNKNOWN",
+  mintAuthority: null,
+  freezeAuthority: null,
+  permanentDelegate: null,
+  transferRestrictions: null,
+  topHolderConcentrationPct: null,
+  exitLiquidityUsd: null,
+  estimatedPriceImpactPct: null,
+  metadataQuality: null,
+};
+
+function authorityEnabled(value: unknown): boolean | null {
+  if (value === undefined) return null;
+  if (value === null || value === "") return false;
+  return true;
+}
+
+function combineAuthority(
+  fromTokenInfo: boolean | null,
+  hintedByAuthorities: boolean,
+): boolean | null {
+  if (fromTokenInfo === true || hintedByAuthorities) return true;
+  if (fromTokenInfo === false) return false;
+  return null;
+}
+
 export class DemoOnChainProvider implements OnChainProvider {
   readonly name = "demo-onchain";
   readonly isDemo = true;
 
   async getTokenRiskInputs(mint: string): Promise<OnChainRiskInput> {
     const demo = getDemoCandidates().find((c) => c.mint === mint);
-    if (demo?.symbol === "SCAMX") {
+    if (!demo) return { ...UNKNOWN_ONCHAIN_RISK };
+    if (demo.symbol === "SCAMX") {
       return {
         tokenProgram: "TOKEN_2022",
         mintAuthority: true,
@@ -36,7 +65,7 @@ export class DemoOnChainProvider implements OnChainProvider {
       permanentDelegate: false,
       transferRestrictions: false,
       topHolderConcentrationPct: 28,
-      exitLiquidityUsd: demo?.liquidityUsd ?? 1_000_000,
+      exitLiquidityUsd: demo.liquidityUsd ?? 1_000_000,
       estimatedPriceImpactPct: 0.35,
       metadataQuality: 0.85,
     };
@@ -46,6 +75,7 @@ export class DemoOnChainProvider implements OnChainProvider {
 /**
  * Helius DAS adapter using official getAsset JSON-RPC.
  * Docs: https://www.helius.dev/docs/api-reference/das/getasset
+ * Mint/freeze authority live on token_info (not authorities[].type).
  */
 export class HeliusOnChainProvider implements OnChainProvider {
   readonly name = "helius";
@@ -87,9 +117,11 @@ export class HeliusOnChainProvider implements OnChainProvider {
             token_program?: string;
             decimals?: number;
             supply?: number;
+            mint_authority?: string | null;
+            freeze_authority?: string | null;
             price_info?: { price_per_token?: number };
           };
-          authorities?: Array<{ type?: string; address?: string }>;
+          authorities?: Array<{ type?: string; address?: string; scopes?: string[] }>;
           content?: { metadata?: { name?: string; symbol?: string } };
         };
         error?: { message?: string };
@@ -102,19 +134,26 @@ export class HeliusOnChainProvider implements OnChainProvider {
       if (program === TOKEN_2022_PROGRAM) tokenProgram = "TOKEN_2022";
 
       const authorities = json.result.authorities ?? [];
-      const hasMintAuth = authorities.some((a) =>
-        String(a.type ?? "").toLowerCase().includes("mint"),
-      );
-      const hasFreeze = authorities.some((a) =>
-        String(a.type ?? "").toLowerCase().includes("freeze"),
-      );
+      const authorityBlob = authorities
+        .map((a) => `${a.type ?? ""} ${(a.scopes ?? []).join(" ")}`)
+        .join(" ")
+        .toLowerCase();
+      const hintedMint = /\bmint\b/.test(authorityBlob);
+      const hintedFreeze = /\bfreeze\b/.test(authorityBlob);
+
       const meta = json.result.content?.metadata;
       const metadataQuality = meta?.name && meta?.symbol ? 0.8 : 0.3;
 
       return {
         tokenProgram,
-        mintAuthority: hasMintAuth,
-        freezeAuthority: hasFreeze,
+        mintAuthority: combineAuthority(
+          authorityEnabled(json.result.token_info?.mint_authority),
+          hintedMint,
+        ),
+        freezeAuthority: combineAuthority(
+          authorityEnabled(json.result.token_info?.freeze_authority),
+          hintedFreeze,
+        ),
         permanentDelegate: null,
         transferRestrictions: null,
         topHolderConcentrationPct: null,
@@ -123,7 +162,10 @@ export class HeliusOnChainProvider implements OnChainProvider {
         metadataQuality,
       };
     } catch {
-      return this.fallback.getTokenRiskInputs(mint);
+      // Never substitute a synthetic "clean" profile for unknown mints — that understates risk.
+      const knownDemo = getDemoCandidates().some((c) => c.mint === mint);
+      if (knownDemo) return this.fallback.getTokenRiskInputs(mint);
+      return { ...UNKNOWN_ONCHAIN_RISK };
     }
   }
 }

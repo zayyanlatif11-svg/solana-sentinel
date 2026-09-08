@@ -46,6 +46,7 @@ export class BirdeyeMarketDataProvider implements MarketDataProvider {
     return {
       "X-API-KEY": this.apiKey,
       Accept: "application/json",
+      "x-chain": "solana",
     };
   }
 

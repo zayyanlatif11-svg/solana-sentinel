@@ -420,7 +420,12 @@ export default function DashboardPage() {
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
                             className="border border-[var(--accent)] bg-[var(--bg-3)] px-3 py-2 text-xs"
-                            disabled={pending || selectedProposal.status === "REJECTED"}
+                            disabled={
+                              pending ||
+                              selectedProposal.status === "REJECTED" ||
+                              selectedProposal.status === "ACCEPTED_PAPER" ||
+                              data.operatingMode === "READ_ONLY"
+                            }
                             onClick={() =>
                               run("paper_execute", { proposalId: selectedProposal.id })
                             }

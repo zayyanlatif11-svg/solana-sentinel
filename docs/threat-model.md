@@ -8,15 +8,17 @@
 
 | Threat | Mitigation |
 |--------|------------|
-| Accidental live broadcast | Hard `canBroadcast=false`; LIVE remapped; multi-env unlock unused |
+| Accidental live broadcast | Hard `canBroadcast=false`; LIVE remapped; `isLiveTradingAllowed()` always false |
 | Key exfiltration via LLM | Secrets never passed to research prompts; mock mode default |
 | Prompt injection via token metadata | Pattern sanitize; treat text UNTRUSTED; Zod-bound output |
 | Malformed market payloads | Zod validation; reject events |
-| Policy bypass via agent | Policy/risk/token-risk deterministic and authoritative |
+| Policy bypass via agent | Policy/risk/token-risk deterministic and authoritative; paper execute re-checks gates |
+| Provider failure understating risk | Helius/demo fallback uses unknown/null authorities — not a synthetic “clean” profile |
+| Unauthenticated local API | Documented; intended for trusted demo hosts only |
 | Dependency / supply chain | Lockfile; CI install; minimal deps |
 | Secret commit | `.gitignore`, `.env.example` only, gitleaks config |
 | Spoofed “safe” labeling | Risk tiers exclude SAFE |
-| Demo mistaken for live edge | UI DEMO banners; `isDemo` fields; HANDOFF honesty |
+| Demo mistaken for live edge | UI DEMO banners; `isDemo` fields; Jupiter demo-fallback notes |
 
 ## Out of scope tonight
 

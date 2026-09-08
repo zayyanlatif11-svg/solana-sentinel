@@ -20,11 +20,9 @@ describe("pipeline e2e (demo)", () => {
     const scam = proposals.find((p) => p.symbol === "SCAMX");
     expect(scam).toBeTruthy();
     expect(scam!.status).toBe("REJECTED");
-    expect(
-      scam!.policy.decision === "REJECTED" ||
-        scam!.tokenRisk.riskTier === "HIGH_RISK" ||
-        scam!.risk.decision === "REJECT",
-    ).toBe(true);
+    expect(scam!.policy.decision).toBe("REJECTED");
+    expect(scam!.tokenRisk.riskTier).toBe("HIGH_RISK");
+    expect(scam!.risk.decision).toBe("REJECT");
   });
 
   it("suppresses duplicate proposals", async () => {
@@ -40,12 +38,41 @@ describe("pipeline e2e (demo)", () => {
       (p) =>
         p.status === "PROPOSED" &&
         p.policy.decision === "APPROVED" &&
-        p.risk.decision !== "REJECT",
+        p.risk.decision !== "REJECT" &&
+        p.tokenRisk.riskTier !== "HIGH_RISK" &&
+        p.tokenRisk.riskTier !== "INSUFFICIENT_DATA",
     );
     expect(ok).toBeTruthy();
-    const result = await executePaperProposal(ok!.id);
+    let result = await executePaperProposal(ok!.id);
+    for (let i = 0; i < 12 && result.order.status !== "FILLED" && result.order.status !== "PARTIAL"; i++) {
+      result = await executePaperProposal(ok!.id);
+    }
+    expect(["FILLED", "PARTIAL"]).toContain(result.order.status);
     expect(result.plan.canBroadcast).toBe(false);
-    expect(["FILLED", "PARTIAL", "FAILED", "STALE_REJECTED"]).toContain(result.order.status);
+    expect(result.plan.mode).toBe("PAPER");
+    expect(result.order.filledUsd).toBeGreaterThan(0);
+    await expect(executePaperProposal(ok!.id)).rejects.toThrow(/already paper-executed/i);
+  });
+
+  it("blocks paper execute in READ_ONLY mode", async () => {
+    const prev = process.env.OPERATING_MODE;
+    process.env.OPERATING_MODE = "READ_ONLY";
+    try {
+      const proposals = await runFullResearchPass();
+      const ok = proposals.find(
+        (p) =>
+          p.status === "PROPOSED" &&
+          p.policy.decision === "APPROVED" &&
+          p.risk.decision !== "REJECT" &&
+          p.tokenRisk.riskTier !== "HIGH_RISK" &&
+          p.tokenRisk.riskTier !== "INSUFFICIENT_DATA",
+      );
+      expect(ok).toBeTruthy();
+      await expect(executePaperProposal(ok!.id)).rejects.toThrow(/READ_ONLY/i);
+    } finally {
+      if (prev === undefined) delete process.env.OPERATING_MODE;
+      else process.env.OPERATING_MODE = prev;
+    }
   });
 
   it("runs experiment with sample warnings possible", () => {

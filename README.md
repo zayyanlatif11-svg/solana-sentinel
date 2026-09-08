@@ -103,6 +103,7 @@ See [SECURITY.md](./SECURITY.md) and [docs/threat-model.md](./docs/threat-model.
 - [Limitations](./docs/limitations.md)
 - [Resume notes](./docs/resume-project-notes.md)
 - [Handoff](./HANDOFF.md)
+- [Adversarial audit (Grok)](./docs/AUDIT-GROK.md)
 
 ## Screenshots / demo
 

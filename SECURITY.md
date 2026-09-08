@@ -21,6 +21,7 @@ Use `.env.example` as the only committed env template. Secret scanning config: `
 | External metadata / social / web | UNTRUSTED; injection-sanitized |
 | Execution provider | Quote + plan only; `canBroadcast` always `false` |
 | Policy / risk / token-risk | Deterministic; LLM cannot bypass |
+| Local HTTP API | Unauthenticated `GET`/`POST` `/api/state`. Demo default binds `0.0.0.0:4317`. Do not expose beyond a trusted network. |
 
 ## Reporting
 

@@ -9,6 +9,7 @@ import {
   newId,
   nowIso,
   createEvent,
+  isLiveTradingAllowed,
 } from "@sat/shared";
 import { getDatabase, type Database } from "@sat/database";
 import { createMarketDataProvider } from "@sat/market-data";
@@ -178,16 +179,27 @@ export async function executePaperProposal(
   proposalId: string,
   db: Database = getDatabase(),
 ) {
+  const mode = getOperatingMode();
+  if (mode === "READ_ONLY") {
+    throw new Error("READ_ONLY mode — paper execution disabled");
+  }
+
   const state = db.getState();
   const proposal = state.proposals.find((p) => p.id === proposalId);
   if (!proposal) throw new Error("Proposal not found");
   if (proposal.status === "REJECTED") throw new Error("Cannot execute rejected proposal");
+  if (proposal.status === "ACCEPTED_PAPER")
+    throw new Error("Proposal already paper-executed");
   if (proposal.policy.decision !== "APPROVED")
     throw new Error("Policy not APPROVED — paper execution blocked");
   if (proposal.risk.decision === "REJECT")
     throw new Error("Risk REJECT — paper execution blocked");
-
-  const mode = getOperatingMode();
+  if (
+    proposal.tokenRisk.riskTier === "HIGH_RISK" ||
+    proposal.tokenRisk.riskTier === "INSUFFICIENT_DATA"
+  ) {
+    throw new Error("Token-risk gate — paper execution blocked");
+  }
   const exec = createExecutionProvider();
   const amount = String(Math.floor(proposal.sizeUsd * 1_000_000)); // USDC 6 dec assumption for quote
   const quote = await exec.quote({
@@ -234,9 +246,11 @@ export async function executePaperProposal(
   db.addEvents(applied.events);
   db.pushEquity(applied.snapshot.navUsd);
 
-  // mark proposal accepted
-  proposal.status = "ACCEPTED_PAPER";
-  db.addProposal(proposal);
+  // Only consume the proposal on an actual (possibly partial) fill so FAILED/STALE can retry.
+  if (order.status === "FILLED" || order.status === "PARTIAL") {
+    proposal.status = "ACCEPTED_PAPER";
+    db.addProposal(proposal);
+  }
 
   return { order, plan, quote, portfolio: applied.snapshot };
 }
@@ -284,7 +298,8 @@ export function getSystemHealth(db: Database = getDatabase()) {
   const state = db.getState();
   return {
     operatingMode: getOperatingMode(),
-    liveTradingAllowed: false,
+    liveTradingAllowed: isLiveTradingAllowed(),
+    canBroadcast: false,
     persistence: state.mode,
     demoMode: process.env.DEMO_MODE !== "false",
     candidates: state.candidates.length,

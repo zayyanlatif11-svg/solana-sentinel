@@ -137,19 +137,23 @@ export class JupiterExecutionProvider implements ExecutionProvider {
   }
 
   async plan(quote: ExecutionQuote, mode: OperatingMode): Promise<ExecutionPlan> {
-    // Hard gate: never broadcast. LIVE stub only if multi-gate unlocked (still no broadcast).
-    if (mode === "LIVE" && !isLiveTradingAllowed()) {
-      assertNotLiveBroadcast("LIVE");
-    }
+    assertNotLiveBroadcast(mode === "LIVE" ? "LIVE" : "PAPER");
+    const notes = quote.isDemo
+      ? [
+          "DEMO quote fallback — not a live Jupiter response",
+          "Broadcast disabled by safety gates",
+          `Operating mode: ${mode}`,
+        ]
+      : [
+          "Jupiter quote/plan only — serialized swap is NOT requested for broadcast",
+          "POST /swap is intentionally not used for live submission in this platform",
+          `canBroadcast=false always; isLiveTradingAllowed=${isLiveTradingAllowed()}`,
+        ];
     return {
       quote,
       mode: "PAPER",
       canBroadcast: false,
-      notes: [
-        "Jupiter quote/plan only — serialized swap is NOT requested for broadcast",
-        "POST /swap is intentionally not used for live submission in this platform",
-        `canBroadcast=false always; isLiveTradingAllowed=${isLiveTradingAllowed()}`,
-      ],
+      notes,
       plannedAt: nowIso(),
     };
   }

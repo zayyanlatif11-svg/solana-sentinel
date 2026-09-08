@@ -78,7 +78,7 @@ export class InMemoryDatabase implements Database {
     this.state.candidates = c;
   }
   addProposal(p: TradeProposal) {
-    this.state.proposals.unshift(p);
+    this.state.proposals = [p, ...this.state.proposals.filter((x) => x.id !== p.id)];
   }
   addOrder(o: PaperOrder) {
     this.state.orders.unshift(o);

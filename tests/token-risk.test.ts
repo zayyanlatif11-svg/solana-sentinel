@@ -46,9 +46,7 @@ describe("token-risk", () => {
       { ...asset, liquidityUsd: null, tokenAgeHours: null, holderCount: null },
       {},
     );
-    expect(["INSUFFICIENT_DATA", "ELEVATED_RISK", "HIGH_RISK", "LOWER_RISK"]).toContain(
-      a.riskTier,
-    );
+    expect(a.riskTier).toBe("INSUFFICIENT_DATA");
     expect(a.details.missingFields.length).toBeGreaterThan(0);
   });
 });

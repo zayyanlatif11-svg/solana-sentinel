@@ -2,7 +2,7 @@
 
 ## STATUS
 
-**V1 COMPLETE (PAPER/DEMO)** — monorepo builds, tests pass, dashboard running, paper trade E2E verified, live Jupiter quote succeeded (no broadcast), docs shipped. Live trading remains hard-disabled.
+**V1 PAPER/DEMO (audit-hardened)** — monorepo builds, tests pass, dashboard running, paper trade E2E verified, live broadcast hard-disabled. Persistence remains in-memory; Postgres is migration-only.
 
 ## WHAT WAS BUILT
 
@@ -10,8 +10,8 @@
 - Deterministic discovery → signals → token-risk → policy → scoring → research → portfolio risk → Jupiter quote/plan → paper fill → experiments
 - Next.js research terminal (institutional aesthetic, DEMO banner, NAV, feed, provenance, ledger, events)
 - Supabase/Postgres SQL migration + in-memory persistence fallback
-- Vitest suite (31 tests), GitHub Actions CI, SECURITY + threat model + methodology docs
-- Safety gates: LIVE remapped to PAPER; `canBroadcast: false`; `isLiveTradingAllowed()` always false in V1
+- Vitest suite (36 tests), GitHub Actions CI, SECURITY + threat model + methodology docs
+- Safety gates: LIVE remapped to PAPER; `canBroadcast: false`; `isLiveTradingAllowed()` always false in V1; `READ_ONLY` blocks paper fills; paper proposals upsert-by-id
 
 ## WHAT ACTUALLY RUNS
 
@@ -31,10 +31,10 @@
 ```text
 pnpm exec vitest run
  Test Files  5 passed (5)
-      Tests  31 passed (31)
+      Tests  36 passed (36)
 ```
 
-Coverage includes: policy/token-risk/risk rejection, signals/scoring, paper fills/stale quotes/costs, prompt-injection guard, live-mode gates (incl. unlock-env still disabled), malformed Zod rejection, pipeline E2E duplicate suppression + paper execute.
+Coverage includes: policy/token-risk/risk rejection (SCAMX asserts all three gates), signals/scoring, paper fills/stale quotes/costs, prompt-injection guard, live-mode gates (incl. unlock-env still disabled), malformed Zod rejection, pipeline E2E duplicate suppression + paper execute + re-execute blocked + READ_ONLY blocked, Helius token_info authority parse + unknown-mint fallback.
 
 ## BUILD RESULTS
 
@@ -56,7 +56,8 @@ Verified via API + headless Chrome screenshot against the running server:
 - UI banner `DEMO / PAPER ONLY` + per-candidate `DEMO` pills
 - DEMO candidates labeled `isDemo: true`
 - `SCAMX` → policy `REJECTED` + token-risk `HIGH_RISK` + risk `REJECT`
-- Paper execute on approved proposal → `FILLED`, `canBroadcast: false`, plan `mode: PAPER`
+- Paper execute on approved proposal → `FILLED`, `canBroadcast: false`, plan `mode: PAPER`; second execute on same id is rejected
+- SCAMX paper execute is rejected
 - `isLiveTradingAllowed()` always `false` in V1 (env unlock trio unused)
 - Jupiter quote may return live lite quotes (`provider: "jupiter"`) or demo fallback; never broadcast
 - Experiment `demo-paper-replay-v1` stored with baseline comparisons
@@ -82,6 +83,7 @@ See [docs/architecture.md](./docs/architecture.md) and root [README.md](./README
 - Playwright UI automation not wired; dashboard verified with headless Chrome screenshot
 - Next.js auto-generated `AGENTS.md` / `CLAUDE.md` may appear under `apps/web`
 - `isLiveTradingAllowed()` hard-returns `false` even if README unlock env vars are set
+- Local `/api/state` is unauthenticated; demo server binds `0.0.0.0:4317`
 
 ## MISSING CREDENTIALS
 
@@ -113,4 +115,5 @@ Optional (platform continues with labeled fallbacks):
 
 **Demo URL:** [http://localhost:4317](http://localhost:4317)  
 **Mode:** PAPER · LIVE broadcasting disabled  
-**Branch:** `cursor/final-qa-fixes-6a3e`
+**Branch:** `cursor/audit-safety-gates-d1d1`  
+**Audit:** [docs/AUDIT-GROK.md](./docs/AUDIT-GROK.md)

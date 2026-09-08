@@ -8,6 +8,7 @@ import { JupiterExecutionProvider, DemoExecutionProvider } from "@sat/execution"
 import { isLiveTradingAllowed, assertNotLiveBroadcast } from "@sat/shared";
 import { computePerformance } from "@sat/analytics";
 import { CandidateAssetSchema } from "@sat/shared";
+import { DemoOnChainProvider, HeliusOnChainProvider } from "@sat/solana";
 
 describe("signals + scoring", () => {
   it("emits modular signals with confidence", () => {
@@ -248,5 +249,68 @@ describe("malformed candidate rejection", () => {
       isDemo: true,
     });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("on-chain adapters", () => {
+  const unknownMint = "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs";
+
+  it("demo provider does not invent a clean profile for unknown mints", async () => {
+    const demo = new DemoOnChainProvider();
+    const r = await demo.getTokenRiskInputs(unknownMint);
+    expect(r.tokenProgram).toBe("UNKNOWN");
+    expect(r.mintAuthority).toBeNull();
+    expect(r.freezeAuthority).toBeNull();
+  });
+
+  it("helius failure on unknown mint returns insufficient-data inputs, not synthetic clean flags", async () => {
+    const helius = new HeliusOnChainProvider("test-key", "http://127.0.0.1:1");
+    const r = await helius.getTokenRiskInputs(unknownMint);
+    expect(r.tokenProgram).toBe("UNKNOWN");
+    expect(r.mintAuthority).toBeNull();
+    expect(r.freezeAuthority).toBeNull();
+  });
+
+  it("helius reads mint/freeze authority from token_info", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          result: {
+            token_info: {
+              token_program: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+              mint_authority: "TdMA45ZnakQCBt5XUvm7ib2htKuTWdcgGKu1eUGrDyJ",
+              freeze_authority: null,
+            },
+            authorities: [],
+            content: { metadata: { name: "USD Coin", symbol: "USDC" } },
+          },
+        }),
+      }) as Response) as typeof fetch;
+    try {
+      const helius = new HeliusOnChainProvider("test-key", "http://helius.test");
+      const r = await helius.getTokenRiskInputs("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+      expect(r.tokenProgram).toBe("TOKEN");
+      expect(r.mintAuthority).toBe(true);
+      expect(r.freezeAuthority).toBe(false);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+describe("jupiter demo fallback labeling", () => {
+  it("plans demo fallback quotes with DEMO notes", async () => {
+    const demo = new DemoExecutionProvider();
+    const quote = await demo.quote({
+      inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      outputMint: getDemoCandidates()[0]!.mint,
+      amount: "1000000",
+    });
+    const jup = new JupiterExecutionProvider("http://127.0.0.1:1", undefined);
+    const plan = await jup.plan(quote, "PAPER");
+    expect(plan.canBroadcast).toBe(false);
+    expect(plan.notes.join(" ")).toMatch(/DEMO quote/i);
   });
 });

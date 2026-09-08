@@ -6,7 +6,7 @@ Monorepo (`pnpm` workspaces) with `apps/web` (Next.js App Router dashboard), `ap
 
 1. **Discovery** pulls trending candidates from MarketDataProvider (Birdeye if keyed, else DEMO).
 2. Each candidate is Zod-validated (`CandidateAssetSchema`); malformed rows emit `TOKEN_REJECTED`.
-3. **Token-risk** scores mint authorities, liquidity, concentration, age, Token-2022 flags.
+3. **Token-risk** scores mint authorities, liquidity, concentration, age, Token-2022 flags. Helius DAS `getAsset` maps `token_info.mint_authority` / `freeze_authority` (not `authorities[].type`).
 4. **Policy engine** applies spot-only / keyword / list rules → APPROVED | REJECTED | MANUAL_REVIEW.
 5. **Signals** compute modular deterministic features; **scoring** blends versioned weights.
 6. **Research agent** (optional LLM, else mock) synthesizes a brief; injection patterns → low confidence.
@@ -21,4 +21,4 @@ Monorepo (`pnpm` workspaces) with `apps/web` (Next.js App Router dashboard), `ap
 
 ## Safety
 
-`getOperatingMode()` remaps `LIVE` → `PAPER`. Execution plans set `canBroadcast: false`.
+`getOperatingMode()` remaps `LIVE` → `PAPER`. `READ_ONLY` blocks paper execution. Execution plans set `canBroadcast: false`. `isLiveTradingAllowed()` is hard-false in V1.
