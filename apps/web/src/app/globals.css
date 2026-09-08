@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+:root {
+  --bg-0: #0c1117;
+  --bg-1: #121a24;
+  --bg-2: #182333;
+  --bg-3: #1e2c40;
+  --line: #2a3a4f;
+  --text: #e8eef6;
+  --muted: #8fa3bb;
+  --accent: #3d9cf0;
+  --accent-2: #c4a35a;
+  --good: #3cb371;
+  --warn: #d4a017;
+  --bad: #d64545;
+  --demo: #c47a3a;
+}
+
+@theme inline {
+  --color-background: var(--bg-0);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #1a2a3f 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #1c2430 0%, transparent 50%),
+    linear-gradient(180deg, var(--bg-0), #0a0e14 100%);
+  color: var(--text);
+  font-family: var(--font-sans), "IBM Plex Sans", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.panel {
+  background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+
+.mono {
+  font-family: var(--font-mono), "IBM Plex Mono", monospace;
+}
+
+.brand {
+  font-family: var(--font-serif), "Source Serif 4", Georgia, serif;
+}
+
+.demo-banner {
+  background: color-mix(in srgb, var(--demo) 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--demo) 45%, transparent);
+  color: #f0d2b0;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-line {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.anim-fade {
+  animation: fade-up 0.55s ease-out both;
+}
+
+.anim-delay-1 {
+  animation-delay: 0.08s;
+}
+.anim-delay-2 {
+  animation-delay: 0.16s;
+}
+.anim-delay-3 {
+  animation-delay: 0.24s;
+}
+
+.live-dot {
+  animation: pulse-line 2s ease-in-out infinite;
+}

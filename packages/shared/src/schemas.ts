@@ -1,0 +1,418 @@
+import { z } from "zod";
+
+/** Operating modes — LIVE is gated and never default. */
+export const OperatingModeSchema = z.enum(["DEMO", "PAPER", "READ_ONLY", "LIVE"]);
+export type OperatingMode = z.infer<typeof OperatingModeSchema>;
+
+export const RiskTierSchema = z.enum([
+  "LOWER_RISK",
+  "ELEVATED_RISK",
+  "HIGH_RISK",
+  "INSUFFICIENT_DATA",
+]);
+export type RiskTier = z.infer<typeof RiskTierSchema>;
+
+export const PolicyDecisionSchema = z.enum(["APPROVED", "REJECTED", "MANUAL_REVIEW"]);
+export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;
+
+export const RiskDecisionSchema = z.enum(["APPROVE", "REJECT", "REDUCE_SIZE"]);
+export type RiskDecision = z.infer<typeof RiskDecisionSchema>;
+
+export const MarketRegimeSchema = z.enum([
+  "RISK_ON",
+  "NEUTRAL",
+  "RISK_OFF",
+  "HIGH_VOLATILITY",
+]);
+export type MarketRegime = z.infer<typeof MarketRegimeSchema>;
+
+export const SystemEventTypeSchema = z.enum([
+  "TOKEN_DISCOVERED",
+  "TOKEN_REJECTED",
+  "SIGNAL_GENERATED",
+  "TRADE_PROPOSED",
+  "POLICY_REJECTED",
+  "RISK_REJECTED",
+  "PAPER_ORDER_CREATED",
+  "PAPER_ORDER_FILLED",
+  "POSITION_OPENED",
+  "POSITION_CLOSED",
+  "POSITION_UPDATED",
+  "PROVIDER_ERROR",
+  "SYSTEM_ERROR",
+]);
+export type SystemEventType = z.infer<typeof SystemEventTypeSchema>;
+
+export const SolanaAddressSchema = z
+  .string()
+  .min(32)
+  .max(44)
+  .regex(/^[1-9A-HJ-NP-Za-km-z]+$/, "Invalid base58 address");
+
+export const CandidateAssetSchema = z.object({
+  mint: SolanaAddressSchema,
+  symbol: z.string().min(1).max(32),
+  name: z.string().min(1).max(128),
+  timestamp: z.string().datetime(),
+  priceUsd: z.number().nonnegative().nullable(),
+  marketCapUsd: z.number().nonnegative().nullable(),
+  liquidityUsd: z.number().nonnegative().nullable(),
+  volume24hUsd: z.number().nonnegative().nullable(),
+  volumeChange24hPct: z.number().nullable(),
+  priceChange1hPct: z.number().nullable(),
+  priceChange24hPct: z.number().nullable(),
+  priceChange7dPct: z.number().nullable(),
+  tokenAgeHours: z.number().nonnegative().nullable(),
+  holderCount: z.number().int().nonnegative().nullable(),
+  decimals: z.number().int().min(0).max(18).nullable(),
+  metadata: z.record(z.unknown()).default({}),
+  dataSources: z.array(z.string()).default([]),
+  riskFlags: z.array(z.string()).default([]),
+  isDemo: z.boolean().default(false),
+});
+export type CandidateAsset = z.infer<typeof CandidateAssetSchema>;
+
+export const SignalNameSchema = z.enum([
+  "momentum",
+  "volume",
+  "liquidity",
+  "relative_strength",
+  "volatility",
+  "market_regime",
+  "on_chain",
+]);
+export type SignalName = z.infer<typeof SignalNameSchema>;
+
+export const SignalResultSchema = z.object({
+  name: SignalNameSchema,
+  value: z.number(),
+  normalizedScore: z.number().min(-1).max(1),
+  confidence: z.number().min(0).max(1),
+  source: z.string(),
+  timestamp: z.string().datetime(),
+  meta: z.record(z.unknown()).optional(),
+});
+export type SignalResult = z.infer<typeof SignalResultSchema>;
+
+export const TokenRiskAssessmentSchema = z.object({
+  mint: SolanaAddressSchema,
+  riskScore: z.number().min(0).max(100),
+  riskTier: RiskTierSchema,
+  riskFlags: z.array(z.string()),
+  riskReasons: z.array(z.string()),
+  dataConfidence: z.number().min(0).max(1),
+  details: z.object({
+    tokenProgram: z.enum(["TOKEN", "TOKEN_2022", "UNKNOWN"]).default("UNKNOWN"),
+    mintAuthority: z.boolean().nullable(),
+    freezeAuthority: z.boolean().nullable(),
+    permanentDelegate: z.boolean().nullable(),
+    transferRestrictions: z.boolean().nullable(),
+    topHolderConcentrationPct: z.number().nullable(),
+    liquidityUsd: z.number().nullable(),
+    exitLiquidityUsd: z.number().nullable(),
+    tokenAgeHours: z.number().nullable(),
+    metadataQuality: z.number().min(0).max(1).nullable(),
+    estimatedPriceImpactPct: z.number().nullable(),
+    missingFields: z.array(z.string()).default([]),
+  }),
+  assessedAt: z.string().datetime(),
+  configVersion: z.string(),
+});
+export type TokenRiskAssessment = z.infer<typeof TokenRiskAssessmentSchema>;
+
+export const PolicyAssessmentSchema = z.object({
+  mint: SolanaAddressSchema,
+  decision: PolicyDecisionSchema,
+  reasons: z.array(z.string()),
+  matchedRules: z.array(z.string()),
+  configVersion: z.string(),
+  assessedAt: z.string().datetime(),
+});
+export type PolicyAssessment = z.infer<typeof PolicyAssessmentSchema>;
+
+export const OpportunityScoreSchema = z.object({
+  mint: SolanaAddressSchema,
+  compositeScore: z.number().min(0).max(100),
+  components: z.record(z.number()),
+  weights: z.record(z.number()),
+  strategyConfigVersion: z.string(),
+  explanation: z.array(z.string()),
+  scoredAt: z.string().datetime(),
+});
+export type OpportunityScore = z.infer<typeof OpportunityScoreSchema>;
+
+export const ResearchBriefSchema = z.object({
+  mint: SolanaAddressSchema,
+  thesis: z.string(),
+  catalysts: z.array(z.string()),
+  contradictions: z.array(z.string()),
+  confidence: z.number().min(0).max(1),
+  sources: z.array(z.string()),
+  isMock: z.boolean(),
+  generatedAt: z.string().datetime(),
+  model: z.string().optional(),
+});
+export type ResearchBrief = z.infer<typeof ResearchBriefSchema>;
+
+export const RiskEngineResultSchema = z.object({
+  decision: RiskDecisionSchema,
+  reasons: z.array(z.string()),
+  approvedSizeUsd: z.number().nonnegative(),
+  requestedSizeUsd: z.number().nonnegative(),
+  checks: z.array(
+    z.object({
+      name: z.string(),
+      passed: z.boolean(),
+      detail: z.string(),
+    }),
+  ),
+  configVersion: z.string(),
+  assessedAt: z.string().datetime(),
+});
+export type RiskEngineResult = z.infer<typeof RiskEngineResultSchema>;
+
+export const ExecutionQuoteSchema = z.object({
+  inputMint: SolanaAddressSchema,
+  outputMint: SolanaAddressSchema,
+  inAmount: z.string(),
+  outAmount: z.string(),
+  otherAmountThreshold: z.string().optional(),
+  priceImpactPct: z.number().nullable(),
+  slippageBps: z.number().int().nonnegative(),
+  routeLabels: z.array(z.string()).default([]),
+  feeEstimateUsd: z.number().nullable(),
+  provider: z.enum(["jupiter", "demo"]),
+  raw: z.unknown().optional(),
+  quotedAt: z.string().datetime(),
+  isDemo: z.boolean().default(false),
+});
+export type ExecutionQuote = z.infer<typeof ExecutionQuoteSchema>;
+
+export const ExecutionPlanSchema = z.object({
+  quote: ExecutionQuoteSchema,
+  mode: z.enum(["PAPER", "LIVE_STUB"]),
+  canBroadcast: z.literal(false),
+  notes: z.array(z.string()),
+  plannedAt: z.string().datetime(),
+});
+export type ExecutionPlan = z.infer<typeof ExecutionPlanSchema>;
+
+export const PaperOrderStatusSchema = z.enum([
+  "CREATED",
+  "PARTIAL",
+  "FILLED",
+  "FAILED",
+  "STALE_REJECTED",
+]);
+export type PaperOrderStatus = z.infer<typeof PaperOrderStatusSchema>;
+
+export const PaperOrderSchema = z.object({
+  id: z.string().uuid(),
+  mint: SolanaAddressSchema,
+  side: z.enum(["BUY", "SELL"]),
+  requestedUsd: z.number().positive(),
+  filledUsd: z.number().nonnegative(),
+  filledQty: z.number().nonnegative(),
+  avgPriceUsd: z.number().nonnegative().nullable(),
+  status: PaperOrderStatusSchema,
+  spreadCostUsd: z.number().nonnegative(),
+  slippageCostUsd: z.number().nonnegative(),
+  impactCostUsd: z.number().nonnegative(),
+  networkCostUsd: z.number().nonnegative(),
+  latencyMs: z.number().nonnegative(),
+  provenance: z.object({
+    opportunityScoreId: z.string().optional(),
+    riskAssessmentId: z.string().optional(),
+    policyAssessmentId: z.string().optional(),
+    tokenRiskId: z.string().optional(),
+    researchId: z.string().optional(),
+    strategyConfigVersion: z.string(),
+    riskConfigVersion: z.string(),
+    dataSources: z.array(z.string()),
+    reasons: z.array(z.string()),
+  }),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  isDemo: z.boolean().default(true),
+});
+export type PaperOrder = z.infer<typeof PaperOrderSchema>;
+
+export const PositionSchema = z.object({
+  id: z.string().uuid(),
+  mint: SolanaAddressSchema,
+  symbol: z.string(),
+  qty: z.number(),
+  avgEntryUsd: z.number().nonnegative(),
+  markUsd: z.number().nonnegative(),
+  unrealizedPnlUsd: z.number(),
+  realizedPnlUsd: z.number(),
+  openedAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type Position = z.infer<typeof PositionSchema>;
+
+export const PortfolioSnapshotSchema = z.object({
+  timestamp: z.string().datetime(),
+  navUsd: z.number(),
+  cashUsd: z.number(),
+  positionsValueUsd: z.number(),
+  drawdownPct: z.number(),
+  peakNavUsd: z.number(),
+});
+export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;
+
+export const TradeProposalSchema = z.object({
+  id: z.string().uuid(),
+  mint: SolanaAddressSchema,
+  symbol: z.string(),
+  side: z.enum(["BUY", "SELL"]),
+  sizeUsd: z.number().positive(),
+  score: OpportunityScoreSchema,
+  tokenRisk: TokenRiskAssessmentSchema,
+  policy: PolicyAssessmentSchema,
+  risk: RiskEngineResultSchema,
+  research: ResearchBriefSchema.optional(),
+  signals: z.array(SignalResultSchema),
+  status: z.enum(["PROPOSED", "REJECTED", "ACCEPTED_PAPER"]),
+  createdAt: z.string().datetime(),
+});
+export type TradeProposal = z.infer<typeof TradeProposalSchema>;
+
+export const SystemEventSchema = z.object({
+  id: z.string().uuid(),
+  type: SystemEventTypeSchema,
+  timestamp: z.string().datetime(),
+  mint: SolanaAddressSchema.optional(),
+  message: z.string(),
+  payload: z.record(z.unknown()).default({}),
+  configVersions: z.record(z.string()).default({}),
+});
+export type SystemEvent = z.infer<typeof SystemEventSchema>;
+
+export const StrategyConfigSchema = z.object({
+  version: z.string(),
+  weights: z.object({
+    momentum: z.number(),
+    volume: z.number(),
+    liquidity: z.number(),
+    relativeStrength: z.number(),
+    regime: z.number(),
+    onChain: z.number(),
+    riskReward: z.number(),
+    research: z.number(),
+  }),
+  minCompositeScore: z.number().min(0).max(100).default(55),
+});
+export type StrategyConfig = z.infer<typeof StrategyConfigSchema>;
+
+export const RiskConfigSchema = z.object({
+  version: z.string(),
+  maxPositionUsd: z.number().positive(),
+  maxPortfolioExposurePct: z.number().min(0).max(1),
+  maxSimultaneousPositions: z.number().int().positive(),
+  minLiquidityUsd: z.number().nonnegative(),
+  maxPriceImpactPct: z.number().nonnegative(),
+  maxSlippageBps: z.number().int().nonnegative(),
+  maxDrawdownPct: z.number().min(0).max(1),
+  maxTurnoverUsdPerDay: z.number().positive(),
+  cooldownMinutes: z.number().nonnegative(),
+  minScore: z.number().min(0).max(100),
+  capitalFloorUsd: z.number().nonnegative(),
+});
+export type RiskConfig = z.infer<typeof RiskConfigSchema>;
+
+export const PolicyConfigSchema = z.object({
+  version: z.string(),
+  spotOnly: z.boolean().default(true),
+  allowInterestBearing: z.boolean().default(false),
+  allowLeverage: z.boolean().default(false),
+  allowDerivatives: z.boolean().default(false),
+  allowPredictionMarkets: z.boolean().default(false),
+  allowProhibitedBusiness: z.boolean().default(false),
+  whitelistMints: z.array(SolanaAddressSchema).default([]),
+  blacklistMints: z.array(SolanaAddressSchema).default([]),
+  manualReviewMints: z.array(SolanaAddressSchema).default([]),
+  prohibitedKeywords: z.array(z.string()).default([
+    "casino",
+    "gambling",
+    "leverage",
+    "perp",
+    "futures",
+    "interest",
+    "lending",
+    "prediction",
+    "polymarket",
+  ]),
+});
+export type PolicyConfig = z.infer<typeof PolicyConfigSchema>;
+
+export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
+  version: "strategy-v1",
+  weights: {
+    momentum: 0.2,
+    volume: 0.15,
+    liquidity: 0.15,
+    relativeStrength: 0.1,
+    regime: 0.1,
+    onChain: 0.1,
+    riskReward: 0.15,
+    research: 0.05,
+  },
+  minCompositeScore: 55,
+};
+
+export const DEFAULT_RISK_CONFIG: RiskConfig = {
+  version: "risk-v1",
+  maxPositionUsd: 5_000,
+  maxPortfolioExposurePct: 0.6,
+  maxSimultaneousPositions: 8,
+  minLiquidityUsd: 250_000,
+  maxPriceImpactPct: 1.5,
+  maxSlippageBps: 100,
+  maxDrawdownPct: 0.15,
+  maxTurnoverUsdPerDay: 50_000,
+  cooldownMinutes: 30,
+  minScore: 55,
+  capitalFloorUsd: 10_000,
+};
+
+export const DEFAULT_POLICY_CONFIG: PolicyConfig = {
+  version: "policy-v1",
+  spotOnly: true,
+  allowInterestBearing: false,
+  allowLeverage: false,
+  allowDerivatives: false,
+  allowPredictionMarkets: false,
+  allowProhibitedBusiness: false,
+  whitelistMints: [],
+  blacklistMints: [],
+  manualReviewMints: [],
+  prohibitedKeywords: [
+    "casino",
+    "gambling",
+    "leverage",
+    "perp",
+    "futures",
+    "interest",
+    "lending",
+    "prediction",
+    "polymarket",
+  ],
+};
+
+/** Hard safety gate — LIVE trading requires explicit multi-gate override. */
+export function assertNotLiveBroadcast(mode: OperatingMode): void {
+  if (mode === "LIVE") {
+    throw new Error(
+      "LIVE broadcast is disabled. This platform is READ_ONLY + PAPER ONLY. Set OPERATING_MODE=PAPER.",
+    );
+  }
+}
+
+export function isLiveTradingAllowed(): boolean {
+  return (
+    process.env.ALLOW_LIVE_TRADING === "true" &&
+    process.env.OPERATING_MODE === "LIVE" &&
+    process.env.LIVE_BROADCAST_UNLOCK === "I_UNDERSTAND_THE_RISKS"
+  );
+}

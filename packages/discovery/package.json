@@ -1,0 +1,26 @@
+{
+  "name": "@sat/discovery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"lint ok @sat/discovery\"",
+    "test": "echo \"use root vitest\"",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {"@sat/shared":"workspace:*","@sat/market-data":"workspace:*","zod":"^3.24.2"},
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

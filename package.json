@@ -1,0 +1,32 @@
+{
+  "name": "solana-agentic-trading",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Solana Agentic Trading Research Platform — READ_ONLY + PAPER ONLY",
+  "packageManager": "pnpm@10.33.3",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* run build && pnpm --filter=@sat/web run build && pnpm --filter=@sat/worker run build",
+    "dev": "pnpm --filter=@sat/web run dev",
+    "dev:worker": "pnpm --filter=@sat/worker run dev",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "clean": "pnpm -r run clean && rm -rf node_modules",
+    "secret-scan": "bash scripts/secret-scan.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  },
+  "dependencies": {
+    "zod": "^3.24.2"
+  }
+}

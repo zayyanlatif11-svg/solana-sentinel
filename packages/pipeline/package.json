@@ -1,0 +1,41 @@
+{
+  "name": "@sat/pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"lint ok @sat/pipeline\"",
+    "test": "echo \"use root vitest\"",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@sat/shared": "workspace:*",
+    "@sat/database": "workspace:*",
+    "@sat/market-data": "workspace:*",
+    "@sat/solana": "workspace:*",
+    "@sat/discovery": "workspace:*",
+    "@sat/signals": "workspace:*",
+    "@sat/token-risk": "workspace:*",
+    "@sat/policy-engine": "workspace:*",
+    "@sat/research-agent": "workspace:*",
+    "@sat/risk-engine": "workspace:*",
+    "@sat/portfolio": "workspace:*",
+    "@sat/execution": "workspace:*",
+    "@sat/paper-trading": "workspace:*",
+    "@sat/analytics": "workspace:*",
+    "@sat/experiments": "workspace:*",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

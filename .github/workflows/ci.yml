@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint web
+        run: pnpm --filter @sat/web run lint
+      - name: Typecheck packages (selected)
+        run: pnpm --filter @sat/shared run typecheck && pnpm --filter @sat/policy-engine run typecheck && pnpm --filter @sat/token-risk run typecheck && pnpm --filter @sat/risk-engine run typecheck
+      - name: Unit & integration tests
+        run: pnpm exec vitest run
+      - name: Production build web
+        run: pnpm --filter @sat/web run build
+        env:
+          DEMO_MODE: "true"
+          OPERATING_MODE: PAPER
+          ALLOW_LIVE_TRADING: "false"
