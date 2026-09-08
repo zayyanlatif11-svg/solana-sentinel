@@ -3,19 +3,31 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --turbopack --port 4317 --hostname 0.0.0.0",
+    "dev:default": "next dev --turbopack",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "start": "next start --port 4317 --hostname 0.0.0.0",
+    "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf .next dist"
   },
   "dependencies": {
+    "@sat/analytics": "workspace:*",
     "@sat/database": "workspace:*",
+    "@sat/discovery": "workspace:*",
     "@sat/execution": "workspace:*",
+    "@sat/experiments": "workspace:*",
     "@sat/market-data": "workspace:*",
+    "@sat/paper-trading": "workspace:*",
     "@sat/pipeline": "workspace:*",
+    "@sat/policy-engine": "workspace:*",
+    "@sat/portfolio": "workspace:*",
+    "@sat/research-agent": "workspace:*",
+    "@sat/risk-engine": "workspace:*",
     "@sat/shared": "workspace:*",
+    "@sat/signals": "workspace:*",
+    "@sat/solana": "workspace:*",
+    "@sat/token-risk": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.483.0",
@@ -27,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@eslint/js": "^9.39.5",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -34,6 +47,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "^8.70.0"
   }
 }

@@ -9,8 +9,8 @@ import {
   type PolicyAssessment,
   type OpportunityScore,
   type ResearchBrief,
-  type ExperimentResult,
 } from "@sat/shared";
+import type { ExperimentResult } from "@sat/experiments";
 import { createInitialPortfolio } from "@sat/portfolio";
 
 export interface StoreSnapshot {

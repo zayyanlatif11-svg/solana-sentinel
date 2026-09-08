@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       zod:
-        specifier: ^3.25.76
+        specifier: ^3.24.2
         version: 3.25.76
     devDependencies:
       '@types/node':
@@ -33,21 +33,54 @@ importers:
 
   apps/web:
     dependencies:
+      '@sat/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@sat/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@sat/discovery':
+        specifier: workspace:*
+        version: link:../../packages/discovery
       '@sat/execution':
         specifier: workspace:*
         version: link:../../packages/execution
+      '@sat/experiments':
+        specifier: workspace:*
+        version: link:../../packages/experiments
       '@sat/market-data':
         specifier: workspace:*
         version: link:../../packages/market-data
+      '@sat/paper-trading':
+        specifier: workspace:*
+        version: link:../../packages/paper-trading
       '@sat/pipeline':
         specifier: workspace:*
         version: link:../../packages/pipeline
+      '@sat/policy-engine':
+        specifier: workspace:*
+        version: link:../../packages/policy-engine
+      '@sat/portfolio':
+        specifier: workspace:*
+        version: link:../../packages/portfolio
+      '@sat/research-agent':
+        specifier: workspace:*
+        version: link:../../packages/research-agent
+      '@sat/risk-engine':
+        specifier: workspace:*
+        version: link:../../packages/risk-engine
       '@sat/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@sat/signals':
+        specifier: workspace:*
+        version: link:../../packages/signals
+      '@sat/solana':
+        specifier: workspace:*
+        version: link:../../packages/solana
+      '@sat/token-risk':
+        specifier: workspace:*
+        version: link:../../packages/token-risk
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -76,6 +109,9 @@ importers:
       '@eslint/eslintrc':
         specifier: ^3
         version: 3.3.7
+      '@eslint/js':
+        specifier: ^9.39.5
+        version: 9.39.5
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3
@@ -100,6 +136,9 @@ importers:
       typescript:
         specifier: ^5
         version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.70.0
+        version: 8.70.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
 
   apps/worker:
     dependencies:
@@ -138,6 +177,12 @@ importers:
 
   packages/database:
     dependencies:
+      '@sat/experiments':
+        specifier: workspace:*
+        version: link:../experiments
+      '@sat/portfolio':
+        specifier: workspace:*
+        version: link:../portfolio
       '@sat/shared':
         specifier: workspace:*
         version: link:../shared
@@ -364,6 +409,9 @@ importers:
       '@sat/shared':
         specifier: workspace:*
         version: link:../shared
+      '@sat/token-risk':
+        specifier: workspace:*
+        version: link:../token-risk
       zod:
         specifier: ^3.24.2
         version: 3.25.76

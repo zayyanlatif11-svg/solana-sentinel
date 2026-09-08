@@ -19,7 +19,12 @@
     "test": "echo \"use root vitest\"",
     "clean": "rm -rf dist"
   },
-  "dependencies": {"@sat/shared":"workspace:*","zod":"^3.24.2"},
+  "dependencies": {
+    "@sat/shared": "workspace:*",
+    "zod": "^3.24.2",
+    "@sat/portfolio": "workspace:*",
+    "@sat/experiments": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.8.2"
   }

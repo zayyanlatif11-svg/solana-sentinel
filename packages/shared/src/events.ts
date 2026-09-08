@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { SystemEvent, SystemEventType } from "./schemas.js";
+import type { SystemEvent, SystemEventType } from "./schemas";
 
 export function createEvent(
   type: SystemEventType,

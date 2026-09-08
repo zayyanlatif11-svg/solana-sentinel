@@ -19,7 +19,6 @@ const nextConfig: NextConfig = {
     "@sat/analytics",
     "@sat/experiments",
   ],
-  serverExternalPackages: [],
 };
 
 export default nextConfig;

@@ -1,4 +1,4 @@
-import type { CandidateAsset } from "./schemas.js";
+import type { CandidateAsset } from "./schemas";
 
 /** Well-known Solana mints used for demo / paper research (not investment advice). */
 export const WSOL = "So11111111111111111111111111111111111111112";
