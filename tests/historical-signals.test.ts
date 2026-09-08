@@ -6,6 +6,7 @@ import {
   computeHistoricalVolume,
   computeTrendBreakout,
   barsAsOf,
+  closedBars,
   simpleReturnPct,
   SIGNAL_MIN_HISTORY,
   type HistoricalBars,
@@ -71,6 +72,17 @@ describe("historical OHLCV signals", () => {
     const missing = computeHistoricalRelativeStrength({ "5m": token });
     expect(missing.meta?.reason).toMatch(/NO_BENCHMARK|INSUFFICIENT_DATA/);
     expect(JSON.stringify(missing)).not.toMatch(/2\.0/);
+  });
+
+  it("drops in-progress bars (closed-bar alignment)", () => {
+    const intervalMs = 300_000;
+    const lastOpen = t0 + intervalMs;
+    const bars = [bar(t0, 100), bar(lastOpen, 110)];
+    const asOf = lastOpen + 1;
+    const { bars: closed, barsDropped } = closedBars(bars, "5m", asOf);
+    expect(closed).toHaveLength(1);
+    expect(closed[0]?.close).toBe(100);
+    expect(barsDropped).toBe(1);
   });
 
   it("ignores future bars (no lookahead)", () => {

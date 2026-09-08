@@ -225,6 +225,7 @@ describe("P0 invariants", () => {
 
   it("execute-time policy gate blocks even when token-risk and portfolio-risk would pass", async () => {
     const db = resetDatabaseForTests(100_000);
+    await db.setCandidates([jup]);
     const p = proposalFixture({
       policy: {
         mint: jup.mint,
@@ -241,6 +242,7 @@ describe("P0 invariants", () => {
 
   it("execute-time token-risk gate blocks even when policy is APPROVED", async () => {
     const db = resetDatabaseForTests(100_000);
+    await db.setCandidates([jup]);
     const p = proposalFixture({
       tokenRisk: {
         ...proposalFixture().tokenRisk,
@@ -255,6 +257,7 @@ describe("P0 invariants", () => {
 
   it("execute-time portfolio-risk gate blocks even when policy is APPROVED", async () => {
     const db = resetDatabaseForTests(100_000);
+    await db.setCandidates([jup]);
     const p = proposalFixture({
       risk: {
         ...proposalFixture().risk,

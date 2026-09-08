@@ -6,7 +6,7 @@ Deterministic assessor (`token-risk-v1.5`) producing:
 - `riskTier`: `LOWER_RISK` | `ELEVATED_RISK` | `HIGH_RISK` | `INSUFFICIENT_DATA`
 - `riskFlags[]`, `riskReasons[]`, `dataConfidence`
 
-**Never emits “SAFE”.** Missing fields stay `null` / `INSUFFICIENT_DATA` — never optimistic defaults.
+**Never emits “SAFE”.** Required on-chain fields (`tokenProgram`, `mintAuthority`, `freezeAuthority`) missing → `INSUFFICIENT_DATA` regardless of liquidity or score. Other missing fields stay `null` — never optimistic defaults.
 
 ## On-chain mapping (Helius DAS + Solana RPC)
 

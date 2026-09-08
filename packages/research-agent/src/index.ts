@@ -3,6 +3,7 @@ import {
   type ResearchBrief,
   ResearchBriefSchema,
   nowIso,
+  newId,
 } from "@sat/shared";
 
 export interface ResearchProvider {
@@ -41,6 +42,7 @@ export class MockResearchProvider implements ResearchProvider {
     );
 
     const brief = {
+      id: newId(),
       mint: asset.mint,
       thesis: injectionSuspected
         ? `Research withheld: prompt-injection patterns detected in untrusted text (${matches.length}).`
@@ -83,6 +85,7 @@ export class OpenAIResearchProvider implements ResearchProvider {
     );
     if (injectionSuspected) {
       return ResearchBriefSchema.parse({
+        id: newId(),
         mint: asset.mint,
         thesis: "Blocked: injection patterns in untrusted inputs.",
         catalysts: [],
@@ -135,6 +138,7 @@ export class OpenAIResearchProvider implements ResearchProvider {
       if (!content) throw new Error("Empty LLM content");
       const parsed = JSON.parse(content) as Record<string, unknown>;
       return ResearchBriefSchema.parse({
+        id: newId(),
         mint: asset.mint,
         thesis: String(parsed.thesis ?? ""),
         catalysts: Array.isArray(parsed.catalysts)

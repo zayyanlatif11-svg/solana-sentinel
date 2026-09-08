@@ -6,12 +6,16 @@ import {
   executePaperProposal,
   runDemoExperiment,
   getOperatingMode,
+  resetProvidersForTests,
 } from "@sat/pipeline";
 import { getDemoCandidates } from "@sat/shared";
 
 describe("pipeline e2e (demo)", () => {
   beforeEach(() => {
     resetDatabaseForTests(100_000);
+    resetProvidersForTests();
+    process.env.PAPER_FAIL_PROBABILITY = "0";
+    process.env.PAPER_PARTIAL_PROBABILITY = "0";
   });
 
   it("runs research pass and rejects scam token", async () => {
@@ -43,10 +47,7 @@ describe("pipeline e2e (demo)", () => {
         p.tokenRisk.riskTier !== "INSUFFICIENT_DATA",
     );
     expect(ok).toBeTruthy();
-    let result = await executePaperProposal(ok!.id);
-    for (let i = 0; i < 12 && result.order.status !== "FILLED" && result.order.status !== "PARTIAL"; i++) {
-      result = await executePaperProposal(ok!.id);
-    }
+    const result = await executePaperProposal(ok!.id);
     expect(["FILLED", "PARTIAL"]).toContain(result.order.status);
     expect(result.plan.canBroadcast).toBe(false);
     expect(result.plan.mode).toBe("PAPER");

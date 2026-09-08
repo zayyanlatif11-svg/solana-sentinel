@@ -6,7 +6,9 @@
 - Emphasized safety gates, provenance, and explainability
 - Implemented provider pattern with DEMO fallbacks
 - Added Postgres persistence when `DATABASE_URL` is set, with labeled in-memory fallback
-- Added Vitest + Playwright coverage for rejection and safety paths (live off, canBroadcast false, SCAMX reject, paper fill, duplicate block)
+- Paper fills are a transactional unit-of-work (at most one fill per proposal) with execute-time portfolio-risk re-evaluation
+- Required on-chain fields missing force `INSUFFICIENT_DATA` (no “unknown authorities + rich liquidity = lower risk”)
+- GET `/api/state` is side-effect-free; remote bind requires `SAT_API_TOKEN`
 
 ## Claims you must not make
 

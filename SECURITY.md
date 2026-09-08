@@ -21,12 +21,12 @@ Use `.env.example` as the only committed env template. Secret scanning: `.gitlea
 | External metadata / social / web | UNTRUSTED; injection-sanitized |
 | Execution provider | Quote + plan only; `canBroadcast` always `false` |
 | Policy / risk / token-risk | Deterministic; LLM cannot bypass |
-| Local HTTP API | Unauthenticated `GET`/`POST` `/api/state`. Default bind `127.0.0.1:4317`. Mutating POST requires a loopback Host or an Origin on the allowlist (`SAT_ALLOWED_ORIGINS`). Do not expose beyond a trusted network. |
+| Local HTTP API | GET `/api/state` is read-only. POST mutations: CSRF/origin check; if `SAT_BIND_HOST` is not loopback, `SAT_API_TOKEN` Bearer is required. Do not expose an unauthenticated mutable API. |
 
 ## Bind / remote demo
 
 - Default: `next dev --hostname 127.0.0.1` (loopback only)
-- Remote demo: `pnpm --filter @sat/web run dev:remote-demo` binds `0.0.0.0:4317` and **must** set `SAT_ALLOWED_ORIGINS` (comma-separated origins). Missing Origin on a non-loopback Host is rejected (403)
+- Remote demo: `pnpm --filter @sat/web run dev:remote-demo` binds `0.0.0.0:4317` and **must** set `SAT_API_TOKEN` and `SAT_ALLOWED_ORIGINS`. Requests without a valid Bearer token are rejected (401). Missing Origin on a non-loopback Host is rejected (403).
 
 ## Reporting
 

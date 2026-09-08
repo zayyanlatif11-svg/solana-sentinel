@@ -27,7 +27,6 @@ jobs:
       DATABASE_URL: postgres://sat:sat@127.0.0.1:5432/sat_test
       DEMO_MODE: "true"
       OPERATING_MODE: PAPER
-      ALLOW_LIVE_TRADING: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -62,7 +61,6 @@ jobs:
     env:
       DEMO_MODE: "true"
       OPERATING_MODE: PAPER
-      ALLOW_LIVE_TRADING: "false"
       PAPER_FAIL_PROBABILITY: "0"
       PAPER_PARTIAL_PROBABILITY: "0"
     steps:

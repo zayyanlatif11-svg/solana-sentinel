@@ -1,6 +1,8 @@
 -- V1.5 JSONB store used by PostgresDatabase when DATABASE_URL is set.
+-- MUST stay in sync with packages/database/src/schema-sql.ts (STORE_SCHEMA_SQL).
 -- Source of truth for runtime round-trip. Table owner (the app role) bypasses RLS.
 -- No anon/authenticated policies: Supabase Data API must not expose these rows.
+-- Legacy tables in 20260325000000_init.sql are unused by the Node adapter.
 
 create extension if not exists "pgcrypto";
 
@@ -22,8 +24,10 @@ create table if not exists sat_orders (
   id uuid primary key,
   mint text not null,
   payload jsonb not null,
-  created_at timestamptz not null
+  created_at timestamptz not null,
+  proposal_id uuid
 );
+create index if not exists sat_orders_created_idx on sat_orders (created_at desc);
 
 create table if not exists sat_positions (
   id uuid primary key,
@@ -42,6 +46,7 @@ create table if not exists sat_events (
   payload jsonb not null,
   created_at timestamptz not null
 );
+create index if not exists sat_events_created_idx on sat_events (created_at desc);
 
 create table if not exists sat_token_risk (
   mint text primary key,
@@ -79,6 +84,7 @@ create table if not exists sat_signals (
   payload jsonb not null,
   created_at timestamptz not null default now()
 );
+create index if not exists sat_signals_mint_idx on sat_signals (mint, created_at desc);
 
 create table if not exists sat_equity (
   id bigserial primary key,
@@ -90,6 +96,17 @@ create table if not exists sat_meta (
   k text primary key,
   payload jsonb not null
 );
+
+create table if not exists sat_schema_version (
+  id int primary key default 1 check (id = 1),
+  version int not null
+);
+
+alter table sat_orders add column if not exists proposal_id uuid;
+create unique index if not exists sat_orders_proposal_id_uidx on sat_orders (proposal_id) where proposal_id is not null;
+create index if not exists sat_orders_created_idx on sat_orders (created_at desc);
+create index if not exists sat_events_created_idx on sat_events (created_at desc);
+create index if not exists sat_signals_mint_idx on sat_signals (mint, created_at desc);
 
 alter table sat_candidates enable row level security;
 alter table sat_proposals enable row level security;
@@ -105,3 +122,4 @@ alter table sat_experiments enable row level security;
 alter table sat_signals enable row level security;
 alter table sat_equity enable row level security;
 alter table sat_meta enable row level security;
+alter table sat_schema_version enable row level security;

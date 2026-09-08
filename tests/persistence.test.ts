@@ -199,8 +199,9 @@ describe("PostgresDatabase", () => {
       await db.reset(25_000);
       await db.close();
       available = true;
-    } catch {
+    } catch (err) {
       available = false;
+      console.warn("Postgres not reachable", err instanceof Error ? err.message : err);
     }
   });
 
@@ -304,5 +305,125 @@ describe("PostgresDatabase", () => {
     expect(second.proposals[0]?.status).toBe("ACCEPTED_PAPER");
     expect(second.mode).toBe("postgres");
     await restored.close();
+  });
+
+  it("atomic consume: second fill of same proposal is rejected", async () => {
+    if (!available) return;
+    const db = new PostgresDatabase(PG_URL, 25_000);
+    await db.reset(25_000);
+    const c = sampleCandidate();
+    const proposalId = "44444444-4444-4444-8444-444444444444";
+    const p = {
+      id: proposalId,
+      mint: c.mint,
+      symbol: "JUP",
+      side: "BUY" as const,
+      sizeUsd: 100,
+      score: {
+        mint: c.mint,
+        compositeScore: 70,
+        components: {},
+        weights: {},
+        strategyConfigVersion: "strategy-v1.1",
+        explanation: [],
+        scoredAt: nowIso(),
+      },
+      tokenRisk: {
+        mint: c.mint,
+        riskScore: 10,
+        riskTier: "LOWER_RISK" as const,
+        riskFlags: [],
+        riskReasons: ["x"],
+        dataConfidence: 0.9,
+        details: {
+          tokenProgram: "TOKEN" as const,
+          mintAuthority: false,
+          freezeAuthority: false,
+          permanentDelegate: false,
+          transferRestrictions: false,
+          topHolderConcentrationPct: 20,
+          liquidityUsd: 1,
+          exitLiquidityUsd: 1,
+          tokenAgeHours: 1,
+          metadataQuality: 1,
+          estimatedPriceImpactPct: 0.1,
+          missingFields: [],
+        },
+        assessedAt: nowIso(),
+        configVersion: "token-risk-v1.5",
+      },
+      policy: {
+        mint: c.mint,
+        decision: "APPROVED" as const,
+        reasons: ["ok"],
+        matchedRules: [],
+        configVersion: "policy-v1",
+        assessedAt: nowIso(),
+      },
+      risk: {
+        decision: "APPROVE" as const,
+        reasons: [],
+        approvedSizeUsd: 100,
+        requestedSizeUsd: 100,
+        checks: [],
+        configVersion: "risk-v1",
+        assessedAt: nowIso(),
+      },
+      signals: [],
+      status: "PROPOSED" as const,
+      createdAt: nowIso(),
+    };
+    await db.addProposal(p);
+    const snap = await db.getState();
+    const mkOrder = (id: string) => ({
+      id,
+      mint: c.mint,
+      side: "BUY" as const,
+      requestedUsd: 10,
+      filledUsd: 10,
+      filledQty: 1,
+      avgPriceUsd: 10,
+      status: "FILLED" as const,
+      spreadCostUsd: 0,
+      slippageCostUsd: 0,
+      impactCostUsd: 0,
+      networkCostUsd: 0,
+      latencyMs: 1,
+      provenance: {
+        strategyConfigVersion: "x",
+        riskConfigVersion: "x",
+        dataSources: [] as string[],
+        reasons: [] as string[],
+      },
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      isDemo: true,
+    });
+    await db.consumeProposalAndRecordFill({
+      proposalId,
+      proposal: { ...p, status: "ACCEPTED_PAPER" },
+      order: mkOrder("55555555-5555-4555-8555-555555555555"),
+      snapshot: snap.portfolio,
+      positions: [],
+      events: [],
+      navUsd: snap.portfolio.navUsd,
+      consumeProposal: true,
+    });
+    await expect(
+      db.consumeProposalAndRecordFill({
+        proposalId,
+        proposal: { ...p, status: "ACCEPTED_PAPER" },
+        order: mkOrder("66666666-6666-4666-8666-666666666666"),
+        snapshot: snap.portfolio,
+        positions: [],
+        events: [],
+        navUsd: snap.portfolio.navUsd,
+        consumeProposal: true,
+      }),
+    ).rejects.toMatchObject({ name: "AlreadyExecutedError" });
+    const after = await db.getState();
+    expect(after.orders).toHaveLength(1);
+    expect(after.parseErrors).toBe(0);
+    await db.close();
   });
 });

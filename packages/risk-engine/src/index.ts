@@ -39,10 +39,11 @@ export class RiskEngine {
       if (!passed) reasons.push(detail);
     };
 
+    const gateScore = ctx.score.gateScore ?? ctx.score.compositeScore;
     add(
       "min_score",
-      ctx.score.compositeScore >= this.config.minScore,
-      `Score ${ctx.score.compositeScore.toFixed(1)} vs min ${this.config.minScore}`,
+      gateScore >= this.config.minScore,
+      `Gate score ${gateScore.toFixed(1)} vs min ${this.config.minScore} (research excluded from gate)`,
     );
 
     add(

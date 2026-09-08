@@ -17,6 +17,24 @@ export interface StoredSignal extends SignalResult {
   mint: string;
 }
 
+export interface FillUnitOfWork {
+  proposalId: string;
+  proposal: TradeProposal;
+  order: PaperOrder;
+  snapshot: PortfolioSnapshot;
+  positions: Position[];
+  events: SystemEvent[];
+  navUsd: number;
+  consumeProposal: boolean;
+}
+
+export class AlreadyExecutedError extends Error {
+  constructor(message = "Proposal already paper-executed") {
+    super(message);
+    this.name = "AlreadyExecutedError";
+  }
+}
+
 export interface StoreSnapshot {
   mode: "memory" | "postgres";
   candidates: CandidateAsset[];
@@ -32,6 +50,7 @@ export interface StoreSnapshot {
   experiments: ExperimentResult[];
   signals: StoredSignal[];
   equityHistory: Array<{ t: string; nav: number }>;
+  parseErrors: number;
 }
 
 export interface Database {
@@ -50,5 +69,6 @@ export interface Database {
   addExperiment(e: ExperimentResult): Promise<void>;
   addSignals(mint: string, signals: SignalResult[]): Promise<void>;
   pushEquity(nav: number): Promise<void>;
+  consumeProposalAndRecordFill(work: FillUnitOfWork): Promise<void>;
   reset(startingCapital: number): Promise<void>;
 }

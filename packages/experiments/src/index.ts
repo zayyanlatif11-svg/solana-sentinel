@@ -61,8 +61,11 @@ export function runExperimentReplay(params: {
   mechanicalEquity?: number[];
   dataQuality?: ExperimentDataQuality;
   isDemo?: boolean;
+  dataSource?: string;
 }): ExperimentResult {
-  const experiment = createExperiment(params.name);
+  const experiment = createExperiment(params.name, {
+    dataSource: params.dataSource,
+  });
   const isDemo = params.isDemo ?? true;
   const insufficient = params.strategyEquity.length < 10;
   const dataQuality: ExperimentDataQuality =

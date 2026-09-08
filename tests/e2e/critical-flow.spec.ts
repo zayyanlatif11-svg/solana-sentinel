@@ -12,6 +12,9 @@ test.describe("critical DEMO/PAPER flow", () => {
     await expect(page.getByTestId("health-live-allowed")).toContainText("OFF");
     await expect(page.getByTestId("btn-activate-live")).toHaveCount(0);
 
+    await expect(page.getByTestId("candidate-SCAMX")).toBeVisible();
+    await expect(page.getByTestId("proposal-status-SCAMX")).toHaveText("REJECTED");
+
     const state = await request.get("/api/state");
     expect(state.ok()).toBeTruthy();
     const json = await state.json();
@@ -19,8 +22,13 @@ test.describe("critical DEMO/PAPER flow", () => {
     expect(json.health.canBroadcast).toBe(false);
     expect(json.candidates.length).toBeGreaterThan(0);
 
-    await expect(page.getByTestId("candidate-SCAMX")).toBeVisible();
-    await expect(page.getByTestId("proposal-status-SCAMX")).toHaveText("REJECTED");
+    const badMint = await request.post("/api/state", {
+      data: { action: "evaluate", mint: "not-a-mint" },
+      headers: { origin: "http://127.0.0.1:4317" },
+    });
+    expect(badMint.status()).toBe(400);
+    const badBody = await badMint.json();
+    expect(badBody.code).toBe("INVALID_ACTION");
 
     const live = await request.post("/api/state", {
       data: { action: "set_mode", mode: "LIVE" },
@@ -28,7 +36,8 @@ test.describe("critical DEMO/PAPER flow", () => {
     });
     expect(live.status()).toBe(400);
     const liveBody = await live.json();
-    expect(String(liveBody.error)).toMatch(/unknown action/i);
+    expect(liveBody.code).toBe("INVALID_ACTION");
+    expect(String(liveBody.error)).toMatch(/discriminator|invalid/i);
 
     const csrf = await request.post("/api/state", {
       data: { action: "reset" },

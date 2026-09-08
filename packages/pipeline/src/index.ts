@@ -7,24 +7,39 @@ import {
   type TradeProposal,
   type OpportunityScore,
   type OperatingMode,
+  type PaperOrder,
   newId,
   nowIso,
   createEvent,
   isLiveTradingAllowed,
+  ExecutionPlanSchema,
+  PROPOSAL_TTL_MS,
 } from "@sat/shared";
-import { getDatabase, type Database } from "@sat/database";
-import { createMarketDataProvider } from "@sat/market-data";
-import { createOnChainProvider } from "@sat/solana";
+import { getDatabase, AlreadyExecutedError, type Database } from "@sat/database";
+import type { HistoricalBars } from "@sat/signals";
 import { DiscoveryService } from "@sat/discovery";
-import { computeAllSignals, scoreOpportunity, type HistoricalBars } from "@sat/signals";
+import { computeAllSignals, scoreOpportunity } from "@sat/signals";
 import { assessTokenRisk } from "@sat/token-risk";
 import { PolicyEngine } from "@sat/policy-engine";
-import { createResearchProvider } from "@sat/research-agent";
 import { RiskEngine } from "@sat/risk-engine";
-import { proposeSizeUsd } from "@sat/portfolio";
-import { createExecutionProvider } from "@sat/execution";
+import { proposeSizeUsd, markPositions } from "@sat/portfolio";
 import { PaperTradingEngine, applyFillToPortfolio } from "@sat/paper-trading";
 import { runExperimentReplay } from "@sat/experiments";
+import { getProviders } from "./providers";
+import {
+  decideProposalStatus,
+  assertStoredGates,
+  assertNotExpired,
+  assertFreshRisk,
+} from "./gates";
+
+export { getProviders, resetProvidersForTests } from "./providers";
+export {
+  decideProposalStatus,
+  assertStoredGates,
+  assertNotExpired,
+  assertFreshRisk,
+} from "./gates";
 
 export function getOperatingMode(): OperatingMode {
   const m = (process.env.OPERATING_MODE ?? "PAPER").toUpperCase();
@@ -33,8 +48,20 @@ export function getOperatingMode(): OperatingMode {
   return "PAPER";
 }
 
+export function lastTradeAtByMint(orders: PaperOrder[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const o of orders) {
+    if (o.status !== "FILLED" && o.status !== "PARTIAL") continue;
+    const prev = out[o.mint];
+    if (!prev || Date.parse(o.createdAt) > Date.parse(prev)) {
+      out[o.mint] = o.createdAt;
+    }
+  }
+  return out;
+}
+
 export async function runDiscoveryCycle(db: Database = getDatabase()) {
-  const market = createMarketDataProvider();
+  const { market } = getProviders();
   const discovery = new DiscoveryService(market);
   const { candidates, events, mode } = await discovery.discover(20);
   await db.setCandidates(candidates);
@@ -48,7 +75,7 @@ export async function runDiscoveryCycle(db: Database = getDatabase()) {
 }
 
 async function loadHistorical(mint: string): Promise<HistoricalBars | undefined> {
-  const market = createMarketDataProvider();
+  const { market } = getProviders();
   try {
     const [b5, b15, b1h, b4h, sol5] = await Promise.all([
       market.getOhlcv(mint, "5m", 120),
@@ -57,6 +84,8 @@ async function loadHistorical(mint: string): Promise<HistoricalBars | undefined>
       market.getOhlcv(mint, "4h", 48),
       market.getOhlcv(WSOL, "5m", 120),
     ]);
+    const empty = ![b5, b15, b1h, b4h].some((b) => b.length);
+    if (empty) return undefined;
     return {
       "5m": b5,
       "15m": b15,
@@ -70,20 +99,25 @@ async function loadHistorical(mint: string): Promise<HistoricalBars | undefined>
   }
 }
 
+function dailyTurnoverUsd(orders: PaperOrder[]): number {
+  return orders
+    .filter((o) => Date.now() - Date.parse(o.createdAt) < 86_400_000)
+    .reduce((s, o) => s + o.filledUsd, 0);
+}
+
 export async function evaluateMint(
   mint: string,
   db: Database = getDatabase(),
 ): Promise<TradeProposal | null> {
+  const { market, onchain, research: researchProvider } = getProviders();
   const state = await db.getState();
   let asset = state.candidates.find((c) => c.mint === mint);
   if (!asset) {
-    const market = createMarketDataProvider();
     asset = (await market.getAsset(mint)) ?? undefined;
   }
   if (!asset) return null;
 
-  const onChain = createOnChainProvider();
-  const riskInputs = await onChain.getTokenRiskInputs(mint);
+  const riskInputs = await onchain.getTokenRiskInputs(mint);
   const tokenRisk = assessTokenRisk(asset, riskInputs);
   await db.addTokenRisk(tokenRisk);
 
@@ -101,7 +135,7 @@ export async function evaluateMint(
   await db.addEvents(signalEvents);
   await db.addSignals(mint, signals);
 
-  const research = await createResearchProvider().research(
+  const research = await researchProvider.research(
     asset,
     `regime=${regime}; riskTier=${tokenRisk.riskTier}`,
   );
@@ -115,19 +149,22 @@ export async function evaluateMint(
   });
 
   const score: OpportunityScore = {
+    id: newId(),
     mint: asset.mint,
     compositeScore: scored.compositeScore,
+    gateScore: scored.gateScore,
     components: scored.components,
     weights: DEFAULT_STRATEGY_CONFIG.weights,
     strategyConfigVersion: DEFAULT_STRATEGY_CONFIG.version,
     explanation: scored.explanation,
+    signalSources: scored.signalSources,
     scoredAt: nowIso(),
   };
   await db.addScore(score);
 
   const requested = proposeSizeUsd(
     state.portfolio.navUsd,
-    score.compositeScore,
+    score.gateScore ?? score.compositeScore,
     DEFAULT_RISK_CONFIG.maxPositionUsd,
   );
 
@@ -139,25 +176,18 @@ export async function evaluateMint(
     score,
     estimatedPriceImpactPct: tokenRisk.details.estimatedPriceImpactPct,
     slippageBps: 50,
-    dailyTurnoverUsd: state.orders
-      .filter((o) => Date.now() - Date.parse(o.createdAt) < 86_400_000)
-      .reduce((s, o) => s + o.filledUsd, 0),
-    lastTradeAtByMint: Object.fromEntries(state.orders.map((o) => [o.mint, o.createdAt])),
+    dailyTurnoverUsd: dailyTurnoverUsd(state.orders),
+    lastTradeAtByMint: lastTradeAtByMint(state.orders),
   });
   await db.addEvents(riskEvents);
 
-  let status: TradeProposal["status"] = "PROPOSED";
-  if (policy.decision === "REJECTED") status = "REJECTED";
-  else if (policy.decision === "MANUAL_REVIEW") status = "REJECTED";
-  else if (risk.decision === "REJECT") status = "REJECTED";
-  else if (tokenRisk.riskTier === "HIGH_RISK" || tokenRisk.riskTier === "INSUFFICIENT_DATA")
-    status = "REJECTED";
+  const status = decideProposalStatus({ policy, tokenRisk, risk });
 
   const dup = state.proposals.find(
     (p) =>
       p.mint === mint &&
       p.status === "PROPOSED" &&
-      Date.now() - Date.parse(p.createdAt) < 15 * 60_000,
+      Date.now() - Date.parse(p.createdAt) < PROPOSAL_TTL_MS,
   );
   if (dup) {
     await db.addEvents([
@@ -169,6 +199,15 @@ export async function evaluateMint(
     return dup;
   }
 
+  const isDemo = Boolean(asset.isDemo || onchain.isDemo || market.isDemo);
+  const dataSources = [
+    ...new Set([
+      ...asset.dataSources,
+      market.name,
+      onchain.name,
+      research.isMock ? "mock-research" : "llm-research",
+    ]),
+  ];
   const proposal: TradeProposal = {
     id: newId(),
     mint: asset.mint,
@@ -183,12 +222,29 @@ export async function evaluateMint(
     signals,
     status,
     createdAt: nowIso(),
+    isDemo,
+    dataSources,
+    provenance: {
+      isDemo,
+      dataSources,
+      providerNames: [market.name, onchain.name],
+      configVersions: {
+        strategy: DEFAULT_STRATEGY_CONFIG.version,
+        risk: DEFAULT_RISK_CONFIG.version,
+        policy: DEFAULT_POLICY_CONFIG.version,
+        tokenRisk: tokenRisk.configVersion,
+      },
+      tokenRiskId: tokenRisk.id,
+      policyId: policy.id,
+      researchId: research.id,
+      scoreId: score.id,
+    },
   };
   await db.addProposal(proposal);
   await db.addEvents([
     createEvent("TRADE_PROPOSED", `${status}: ${asset.symbol} $${proposal.sizeUsd.toFixed(0)}`, {
       mint,
-      payload: { proposalId: proposal.id, status },
+      payload: { proposalId: proposal.id, status, isDemo, dataSources },
       configVersions: {
         strategy: DEFAULT_STRATEGY_CONFIG.version,
         risk: DEFAULT_RISK_CONFIG.version,
@@ -211,71 +267,138 @@ export async function executePaperProposal(
   const state = await db.getState();
   const proposal = state.proposals.find((p) => p.id === proposalId);
   if (!proposal) throw new Error("Proposal not found");
-  if (proposal.status === "REJECTED") throw new Error("Cannot execute rejected proposal");
-  if (proposal.status === "ACCEPTED_PAPER")
-    throw new Error("Proposal already paper-executed");
-  if (proposal.policy.decision !== "APPROVED")
-    throw new Error("Policy not APPROVED — paper execution blocked");
-  if (proposal.risk.decision === "REJECT")
-    throw new Error("Risk REJECT — paper execution blocked");
-  if (
-    proposal.tokenRisk.riskTier === "HIGH_RISK" ||
-    proposal.tokenRisk.riskTier === "INSUFFICIENT_DATA"
-  ) {
-    throw new Error("Token-risk gate — paper execution blocked");
+  assertStoredGates(proposal);
+  assertNotExpired(proposal);
+
+  const asset = state.candidates.find((c) => c.mint === proposal.mint);
+  const mark = asset?.priceUsd;
+  if (mark == null || mark <= 0) {
+    throw new Error("NO_MARK — refuse paper fill without a price");
   }
-  const exec = createExecutionProvider();
-  const amount = String(Math.floor(proposal.sizeUsd * 1_000_000));
-  const quote = await exec.quote({
+
+  const requested = proposal.risk.approvedSizeUsd || proposal.sizeUsd;
+  const riskEngine = new RiskEngine(DEFAULT_RISK_CONFIG);
+  const { result: freshRisk } = riskEngine.evaluate(asset ?? {
+    ...proposal.tokenRisk,
+    mint: proposal.mint,
+    symbol: proposal.symbol,
+    name: proposal.symbol,
+    timestamp: nowIso(),
+    priceUsd: mark,
+    marketCapUsd: null,
+    liquidityUsd: proposal.tokenRisk.details.liquidityUsd,
+    volume24hUsd: null,
+    volumeChange24hPct: null,
+    priceChange1hPct: null,
+    priceChange24hPct: null,
+    priceChange7dPct: null,
+    tokenAgeHours: proposal.tokenRisk.details.tokenAgeHours,
+    holderCount: null,
+    decimals: null,
+    metadata: {},
+    dataSources: proposal.dataSources ?? [],
+    riskFlags: [],
+    isDemo: proposal.isDemo ?? true,
+  }, {
+    portfolio: state.portfolio,
+    positions: state.positions,
+    requestedSizeUsd: requested,
+    score: proposal.score,
+    estimatedPriceImpactPct: proposal.tokenRisk.details.estimatedPriceImpactPct,
+    slippageBps: 50,
+    dailyTurnoverUsd: dailyTurnoverUsd(state.orders),
+    lastTradeAtByMint: lastTradeAtByMint(state.orders),
+  });
+  assertFreshRisk(freshRisk.decision);
+
+  const { execution } = getProviders();
+  const amount = String(Math.floor((freshRisk.approvedSizeUsd || requested) * 1_000_000));
+  const quote = await execution.quote({
     inputMint: USDC,
     outputMint: proposal.mint,
     amount,
     slippageBps: 50,
   });
-  const plan = await exec.plan(quote, mode);
+  const plan = ExecutionPlanSchema.parse(await execution.plan(quote, mode));
 
   const paper = new PaperTradingEngine();
-  const asset = state.candidates.find((c) => c.mint === proposal.mint);
-  const mark = asset?.priceUsd ?? 1;
+  const isDemo = Boolean(quote.isDemo || asset?.isDemo || proposal.isDemo);
   const { order, events } = paper.createAndFill({
     mint: proposal.mint,
     side: proposal.side,
-    requestedUsd: proposal.risk.approvedSizeUsd || proposal.sizeUsd,
+    requestedUsd: freshRisk.approvedSizeUsd || requested,
     markPriceUsd: mark,
     quote,
     provenance: {
-      opportunityScoreId: proposal.id,
+      opportunityScoreId: proposal.score.id ?? proposal.id,
+      riskAssessmentId: proposal.risk.configVersion,
+      policyAssessmentId: proposal.policy.id,
+      tokenRiskId: proposal.tokenRisk.id,
+      researchId: proposal.research?.id,
       strategyConfigVersion: proposal.score.strategyConfigVersion,
       riskConfigVersion: proposal.risk.configVersion,
-      dataSources: asset?.dataSources ?? ["demo"],
+      dataSources: proposal.dataSources ?? asset?.dataSources ?? ["demo"],
       reasons: [
         ...proposal.score.explanation,
-        ...proposal.risk.reasons.slice(0, 3),
+        ...freshRisk.reasons.slice(0, 3),
         `Execution plan mode=${plan.mode} canBroadcast=${plan.canBroadcast}`,
       ],
     },
-    isDemo: quote.isDemo || asset?.isDemo,
+    isDemo,
   });
-  await db.addOrder(order);
-  await db.addEvents(events);
 
+  const consume = order.status === "FILLED" || order.status === "PARTIAL";
   const applied = applyFillToPortfolio(
     state.portfolio,
     state.positions,
     order,
     proposal.symbol,
   );
-  await db.setPortfolio(applied.snapshot);
-  await db.setPositions(applied.positions);
-  await db.addEvents(applied.events);
-  await db.pushEquity(applied.snapshot.navUsd);
+  if (consume) {
+    for (const p of applied.positions) {
+      if (p.mint === proposal.mint) {
+        p.isDemo = isDemo;
+        p.dataSources = proposal.dataSources;
+      }
+    }
+  }
 
-  if (order.status === "FILLED" || order.status === "PARTIAL") {
-    proposal.status = "ACCEPTED_PAPER";
-    await db.addProposal(proposal);
+  const accepted: TradeProposal = { ...proposal, status: "ACCEPTED_PAPER" };
+  try {
+    await db.consumeProposalAndRecordFill({
+      proposalId,
+      proposal: accepted,
+      order,
+      snapshot: applied.snapshot,
+      positions: applied.positions,
+      events: [...events, ...applied.events],
+      navUsd: applied.snapshot.navUsd,
+      consumeProposal: consume,
+    });
+  } catch (err) {
+    if (err instanceof AlreadyExecutedError) {
+      throw err;
+    }
+    throw err;
   }
 
   return { order, plan, quote, portfolio: applied.snapshot };
+}
+
+export async function markToMarket(db: Database = getDatabase()) {
+  const { market } = getProviders();
+  const state = await db.getState();
+  const marks: Record<string, number> = {};
+  for (const p of state.positions) {
+    const fromFeed = state.candidates.find((c) => c.mint === p.mint);
+    const asset = fromFeed ?? (await market.getAsset(p.mint));
+    if (asset?.priceUsd != null) marks[p.mint] = asset.priceUsd;
+  }
+  const marked = markPositions(state.positions, marks, state.portfolio);
+  await db.setPositions(marked.positions);
+  await db.setPortfolio(marked.snapshot);
+  await db.pushEquity(marked.snapshot.navUsd);
+  return marked.snapshot;
 }
 
 export async function runFullResearchPass(db: Database = getDatabase()) {
@@ -289,9 +412,14 @@ export async function runFullResearchPass(db: Database = getDatabase()) {
 }
 
 export async function runDemoExperiment(db: Database = getDatabase()) {
+  const { market } = getProviders();
   const state = await db.getState();
   const start = state.equityHistory[0]?.nav ?? 100_000;
   const equity = state.equityHistory.map((e) => e.nav);
+  const demoFromData =
+    state.orders.some((o) => o.isDemo) ||
+    state.candidates.some((c) => c.isDemo) ||
+    market.isDemo;
   const result = runExperimentReplay({
     name: "demo-paper-replay-v1",
     strategyEquity: equity,
@@ -301,7 +429,8 @@ export async function runDemoExperiment(db: Database = getDatabase()) {
       0,
     ),
     dataQuality: equity.length < 10 ? "INSUFFICIENT_HISTORY" : "PAPER_EQUITY",
-    isDemo: process.env.DEMO_MODE !== "false",
+    isDemo: demoFromData,
+    dataSource: demoFromData ? "demo" : "paper-equity",
   });
   await db.addExperiment(result);
   return result;
@@ -309,12 +438,15 @@ export async function runDemoExperiment(db: Database = getDatabase()) {
 
 export async function getSystemHealth(db: Database = getDatabase()) {
   const state = await db.getState();
+  const { market, onchain, execution } = getProviders();
+  const demoMode = market.isDemo || onchain.isDemo || Boolean(state.candidates.find((c) => c.isDemo));
   return {
     operatingMode: getOperatingMode(),
     liveTradingAllowed: isLiveTradingAllowed(),
     canBroadcast: false as const,
     persistence: db.mode,
-    demoMode: process.env.DEMO_MODE !== "false",
+    parseErrors: state.parseErrors,
+    demoMode,
     candidates: state.candidates.length,
     proposals: state.proposals.length,
     openPositions: state.positions.length,
@@ -323,10 +455,13 @@ export async function getSystemHealth(db: Database = getDatabase()) {
     navUsd: state.portfolio.navUsd,
     drawdownPct: state.portfolio.drawdownPct,
     providers: {
-      market: createMarketDataProvider().name,
-      onchain: createOnChainProvider().name,
-      execution: createExecutionProvider().name,
+      market: market.name,
+      marketIsDemo: market.isDemo,
+      onchain: onchain.name,
+      onchainIsDemo: onchain.isDemo,
+      execution: execution.name,
       research: process.env.OPENAI_API_KEY ? "openai-compatible" : "mock",
+      researchIsMock: !process.env.OPENAI_API_KEY,
     },
   };
 }

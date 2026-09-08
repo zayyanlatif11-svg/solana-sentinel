@@ -35,8 +35,8 @@ export const DEFAULT_PAPER_FILL_CONFIG: PaperFillModelConfig = {
   networkCostUsd: 0.02,
   latencyMsMin: 80,
   latencyMsMax: 450,
-  failProbability: envProb("PAPER_FAIL_PROBABILITY", 0.03),
-  partialProbability: envProb("PAPER_PARTIAL_PROBABILITY", 0.12),
+  failProbability: 0.03,
+  partialProbability: 0.12,
   staleQuoteMs: 15_000,
 };
 
@@ -45,7 +45,15 @@ function rand(min: number, max: number): number {
 }
 
 export class PaperTradingEngine {
-  constructor(private readonly config: PaperFillModelConfig = DEFAULT_PAPER_FILL_CONFIG) {}
+  private readonly config: PaperFillModelConfig;
+
+  constructor(config: PaperFillModelConfig = DEFAULT_PAPER_FILL_CONFIG) {
+    this.config = {
+      ...config,
+      failProbability: envProb("PAPER_FAIL_PROBABILITY", config.failProbability),
+      partialProbability: envProb("PAPER_PARTIAL_PROBABILITY", config.partialProbability),
+    };
+  }
 
   createAndFill(params: {
     mint: string;

@@ -13,17 +13,28 @@ import {
 } from "@sat/shared";
 import type { ExperimentResult } from "@sat/experiments";
 import { createInitialPortfolio } from "@sat/portfolio";
-import type { Database, StoreSnapshot, StoredSignal } from "./types";
+import type { Database, StoreSnapshot, StoredSignal, FillUnitOfWork } from "./types";
+import { AlreadyExecutedError } from "./types";
 import { PostgresDatabase } from "./postgres";
 
-export type { Database, StoreSnapshot, StoredSignal };
+export type { Database, StoreSnapshot, StoredSignal, FillUnitOfWork };
 
 export class InMemoryDatabase implements Database {
   readonly mode = "memory" as const;
   private state: StoreSnapshot;
+  private tail: Promise<void> = Promise.resolve();
 
   constructor(startingCapital = Number(process.env.PAPER_STARTING_CAPITAL_USD ?? 100_000)) {
     this.state = emptyState(startingCapital, "memory");
+  }
+
+  private enqueue<T>(fn: () => T | Promise<T>): Promise<T> {
+    const run = this.tail.then(fn, fn);
+    this.tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   async getState(): Promise<StoreSnapshot> {
@@ -47,7 +58,6 @@ export class InMemoryDatabase implements Database {
   }
   async addEvents(e: SystemEvent[]) {
     this.state.events.unshift(...e);
-    this.state.events = this.state.events.slice(0, 500);
   }
   async addTokenRisk(a: TokenRiskAssessment) {
     this.state.tokenRisk = [a, ...this.state.tokenRisk.filter((x) => x.mint !== a.mint)].slice(
@@ -81,9 +91,26 @@ export class InMemoryDatabase implements Database {
   }
   async pushEquity(nav: number) {
     this.state.equityHistory.push({ t: new Date().toISOString(), nav });
-    if (this.state.equityHistory.length > 500) {
-      this.state.equityHistory = this.state.equityHistory.slice(-500);
-    }
+  }
+
+  async consumeProposalAndRecordFill(work: FillUnitOfWork): Promise<void> {
+    return this.enqueue(async () => {
+      if (work.consumeProposal) {
+        const current = this.state.proposals.find((p) => p.id === work.proposalId);
+        if (!current || current.status !== "PROPOSED") {
+          throw new AlreadyExecutedError();
+        }
+        this.state.proposals = [
+          work.proposal,
+          ...this.state.proposals.filter((x) => x.id !== work.proposalId),
+        ];
+      }
+      this.state.orders.unshift(work.order);
+      this.state.portfolio = work.snapshot;
+      this.state.positions = work.positions;
+      this.state.events.unshift(...work.events);
+      this.state.equityHistory.push({ t: new Date().toISOString(), nav: work.navUsd });
+    });
   }
   async reset(startingCapital: number) {
     this.state = emptyState(startingCapital, "memory");
@@ -107,6 +134,7 @@ function emptyState(startingCapital: number, mode: StoreSnapshot["mode"]): Store
     experiments: [],
     signals: [],
     equityHistory: [{ t: snapshot.timestamp, nav: snapshot.navUsd }],
+    parseErrors: 0,
   };
 }
 
@@ -140,5 +168,5 @@ export async function closeDatabaseForTests(): Promise<void> {
   singleton = null;
 }
 
-export { PostgresDatabase };
-export { STORE_SCHEMA_SQL } from "./schema-sql";
+export { PostgresDatabase, AlreadyExecutedError };
+export { STORE_SCHEMA_SQL, STORE_SCHEMA_VERSION } from "./schema-sql";

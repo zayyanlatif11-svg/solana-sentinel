@@ -3,9 +3,17 @@ import {
   type TokenRiskAssessment,
   type RiskTier,
   nowIso,
+  newId,
 } from "@sat/shared";
 
 export const TOKEN_RISK_CONFIG_VERSION = "token-risk-v1.5";
+
+/** Absence of any of these forces INSUFFICIENT_DATA regardless of score. */
+export const REQUIRED_ONCHAIN_FIELDS = [
+  "tokenProgram",
+  "mintAuthority",
+  "freezeAuthority",
+] as const;
 
 export interface OnChainRiskInput {
   tokenProgram?: "TOKEN" | "TOKEN_2022" | "UNKNOWN";
@@ -23,7 +31,12 @@ export interface OnChainRiskInput {
   metadataQuality?: number | null;
 }
 
-function tierFromScore(score: number, confidence: number): RiskTier {
+function tierFromScore(
+  score: number,
+  confidence: number,
+  hasRequired: boolean,
+): RiskTier {
+  if (!hasRequired) return "INSUFFICIENT_DATA";
   if (confidence < 0.35) return "INSUFFICIENT_DATA";
   if (score >= 70) return "HIGH_RISK";
   if (score >= 40) return "ELEVATED_RISK";
@@ -171,16 +184,21 @@ export function assessTokenRisk(
     Math.min(1, dataConfidence - missing.length * 0.03),
   );
 
-  if (missing.length > 5) {
+  const missingRequired = REQUIRED_ONCHAIN_FIELDS.filter((f) => missing.includes(f));
+  const hasRequired = missingRequired.length === 0;
+  if (!hasRequired) {
+    reasons.unshift(`MISSING_REQUIRED: ${missingRequired.join(", ")}`);
+  } else if (missing.length > 5) {
     reasons.push(`Missing data fields: ${missing.join(", ")}`);
   }
 
-  const riskTier = tierFromScore(score, adjustedConfidence);
+  const riskTier = tierFromScore(score, adjustedConfidence, hasRequired);
   if (reasons.length === 0) {
     reasons.push("No elevated deterministic risk flags from available data");
   }
 
   return {
+    id: newId(),
     mint: asset.mint,
     riskScore: score,
     riskTier,

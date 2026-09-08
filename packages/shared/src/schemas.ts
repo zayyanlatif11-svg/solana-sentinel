@@ -111,7 +111,20 @@ export const SignalResultSchema = z.object({
 });
 export type SignalResult = z.infer<typeof SignalResultSchema>;
 
+export const ArtifactProvenanceSchema = z.object({
+  isDemo: z.boolean(),
+  dataSources: z.array(z.string()),
+  providerNames: z.array(z.string()).default([]),
+  configVersions: z.record(z.string()).default({}),
+  tokenRiskId: z.string().uuid().optional(),
+  policyId: z.string().uuid().optional(),
+  researchId: z.string().uuid().optional(),
+  scoreId: z.string().uuid().optional(),
+});
+export type ArtifactProvenance = z.infer<typeof ArtifactProvenanceSchema>;
+
 export const TokenRiskAssessmentSchema = z.object({
+  id: z.string().uuid().optional(),
   mint: SolanaAddressSchema,
   riskScore: z.number().min(0).max(100),
   riskTier: RiskTierSchema,
@@ -142,6 +155,7 @@ export const TokenRiskAssessmentSchema = z.object({
 export type TokenRiskAssessment = z.infer<typeof TokenRiskAssessmentSchema>;
 
 export const PolicyAssessmentSchema = z.object({
+  id: z.string().uuid().optional(),
   mint: SolanaAddressSchema,
   decision: PolicyDecisionSchema,
   reasons: z.array(z.string()),
@@ -152,17 +166,22 @@ export const PolicyAssessmentSchema = z.object({
 export type PolicyAssessment = z.infer<typeof PolicyAssessmentSchema>;
 
 export const OpportunityScoreSchema = z.object({
+  id: z.string().uuid().optional(),
   mint: SolanaAddressSchema,
   compositeScore: z.number().min(0).max(100),
+  /** Composite excluding research weight — used for the min_score gate. */
+  gateScore: z.number().min(0).max(100).optional(),
   components: z.record(z.number()),
   weights: z.record(z.number()),
   strategyConfigVersion: z.string(),
   explanation: z.array(z.string()),
+  signalSources: z.record(z.string()).optional(),
   scoredAt: z.string().datetime(),
 });
 export type OpportunityScore = z.infer<typeof OpportunityScoreSchema>;
 
 export const ResearchBriefSchema = z.object({
+  id: z.string().uuid().optional(),
   mint: SolanaAddressSchema,
   thesis: z.string(),
   catalysts: z.array(z.string()),
@@ -269,6 +288,8 @@ export const PositionSchema = z.object({
   realizedPnlUsd: z.number(),
   openedAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  isDemo: z.boolean().optional(),
+  dataSources: z.array(z.string()).optional(),
 });
 export type Position = z.infer<typeof PositionSchema>;
 
@@ -294,8 +315,11 @@ export const TradeProposalSchema = z.object({
   risk: RiskEngineResultSchema,
   research: ResearchBriefSchema.optional(),
   signals: z.array(SignalResultSchema),
-  status: z.enum(["PROPOSED", "REJECTED", "ACCEPTED_PAPER"]),
+  status: z.enum(["PROPOSED", "REJECTED", "ACCEPTED_PAPER", "MANUAL_REVIEW"]),
   createdAt: z.string().datetime(),
+  isDemo: z.boolean().optional(),
+  dataSources: z.array(z.string()).optional(),
+  provenance: ArtifactProvenanceSchema.optional(),
 });
 export type TradeProposal = z.infer<typeof TradeProposalSchema>;
 
@@ -320,6 +344,7 @@ export const StrategyConfigSchema = z.object({
     regime: z.number(),
     onChain: z.number(),
     riskReward: z.number(),
+    trendBreakout: z.number().default(0.05),
     research: z.number(),
   }),
   minCompositeScore: z.number().min(0).max(100).default(55),
@@ -368,19 +393,23 @@ export const PolicyConfigSchema = z.object({
 export type PolicyConfig = z.infer<typeof PolicyConfigSchema>;
 
 export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
-  version: "strategy-v1",
+  version: "strategy-v1.1",
   weights: {
-    momentum: 0.2,
-    volume: 0.15,
-    liquidity: 0.15,
-    relativeStrength: 0.1,
-    regime: 0.1,
-    onChain: 0.1,
-    riskReward: 0.15,
+    momentum: 0.18,
+    volume: 0.13,
+    liquidity: 0.13,
+    relativeStrength: 0.09,
+    regime: 0.09,
+    onChain: 0.09,
+    riskReward: 0.14,
+    trendBreakout: 0.05,
     research: 0.05,
   },
   minCompositeScore: 55,
 };
+
+/** Proposal TTL at execute time — stale proposes must be re-evaluated. */
+export const PROPOSAL_TTL_MS = 15 * 60_000;
 
 export const DEFAULT_RISK_CONFIG: RiskConfig = {
   version: "risk-v1",

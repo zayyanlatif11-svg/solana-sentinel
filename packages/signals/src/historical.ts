@@ -104,15 +104,36 @@ export function barsAsOf(bars: OhlcvBar[] | undefined, asOfMs?: number): OhlcvBa
   return bars.filter((b) => b.timestamp <= cut).sort((a, b) => a.timestamp - b.timestamp);
 }
 
-/** Prefer requested interval; if missing, use the next coarser available interval (never interpolate). */
+export const INTERVAL_MS: Record<OhlcvInterval, number> = {
+  "1m": 60_000,
+  "5m": 300_000,
+  "15m": 900_000,
+  "1h": 3_600_000,
+  "4h": 14_400_000,
+};
+
+/** Drop in-progress bars so signals only see closed candles. */
+export function closedBars(
+  bars: OhlcvBar[] | undefined,
+  interval: OhlcvInterval,
+  asOfMs?: number,
+): { bars: OhlcvBar[]; barsDropped: number } {
+  const cut = asOfMs ?? Date.now();
+  const width = INTERVAL_MS[interval];
+  const asOf = barsAsOf(bars, cut);
+  const closed = asOf.filter((b) => b.timestamp + width <= cut);
+  return { bars: closed, barsDropped: asOf.length - closed.length };
+}
+
+/** Prefer requested interval; if missing, use the next coarser available interval (never interpolate). Closed bars only. */
 export function barsForInterval(hist: HistoricalBars, interval: OhlcvInterval): OhlcvBar[] {
   const asOfMs = hist.asOfMs;
   const order: OhlcvInterval[] = ["1m", "5m", "15m", "1h", "4h"];
   const start = order.indexOf(interval);
   const candidates = start >= 0 ? order.slice(start) : order;
   for (const i of candidates) {
-    const rows = barsAsOf(hist[i], asOfMs);
-    if (rows.length) return rows;
+    const { bars } = closedBars(hist[i], i, asOfMs);
+    if (bars.length) return bars;
   }
   return [];
 }
@@ -266,20 +287,24 @@ export function computeHistoricalVolatility(hist: HistoricalBars): SignalResult 
 
 export function computeHistoricalRelativeStrength(hist: HistoricalBars): SignalResult {
   const token = barsForInterval(hist, "5m");
-  const sol = barsAsOf(hist.sol?.["5m"] ?? hist.sol?.["15m"] ?? hist.sol?.["1h"], hist.asOfMs);
+  const { bars: solClosed } = closedBars(
+    hist.sol?.["5m"] ?? hist.sol?.["15m"] ?? hist.sol?.["1h"],
+    hist.sol?.["5m"] ? "5m" : hist.sol?.["15m"] ? "15m" : "1h",
+    hist.asOfMs,
+  );
   const rToken = simpleReturnPct(token, 1);
-  const rSol = simpleReturnPct(sol, 1);
+  const rSol = simpleReturnPct(solClosed, 1);
   if (rToken == null || rSol == null) {
     return insufficient("relative_strength", "INSUFFICIENT_DATA", {
       reason: "NO_BENCHMARK",
       haveTokenBars: token.length,
-      haveSolBars: sol.length,
+      haveSolBars: solClosed.length,
       hardcodedBenchmark: false,
     });
   }
   const rs = rToken - rSol;
-  const btc = barsAsOf(hist.btc?.["5m"], hist.asOfMs);
-  const rBtc = simpleReturnPct(btc, 1);
+  const { bars: btcClosed } = closedBars(hist.btc?.["5m"], "5m", hist.asOfMs);
+  const rBtc = simpleReturnPct(btcClosed, 1);
   return {
     name: "relative_strength",
     value: rs,

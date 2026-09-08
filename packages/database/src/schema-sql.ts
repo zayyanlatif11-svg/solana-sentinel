@@ -1,11 +1,12 @@
 /**
  * Runtime schema used by PostgresDatabase.
- * Also mirrored in supabase/migrations/20260908000000_v15_store.sql.
+ * Mirrored in supabase/migrations/20260908000000_v15_store.sql — keep identical.
  *
  * JSONB payloads are the source of truth for round-trip fidelity with Zod types.
- * Legacy domain tables in 20260325000000_init.sql remain for analytics; the Node
- * adapter does not dual-write them in V1.5.
+ * Legacy domain tables in 20260325000000_init.sql remain unused by the Node adapter.
  */
+export const STORE_SCHEMA_VERSION = 2;
+
 export const STORE_SCHEMA_SQL = `
 create table if not exists sat_candidates (
   mint text primary key,
@@ -25,7 +26,8 @@ create table if not exists sat_orders (
   id uuid primary key,
   mint text not null,
   payload jsonb not null,
-  created_at timestamptz not null
+  created_at timestamptz not null,
+  proposal_id uuid
 );
 create index if not exists sat_orders_created_idx on sat_orders (created_at desc);
 
@@ -97,6 +99,17 @@ create table if not exists sat_meta (
   payload jsonb not null
 );
 
+create table if not exists sat_schema_version (
+  id int primary key default 1 check (id = 1),
+  version int not null
+);
+
+alter table sat_orders add column if not exists proposal_id uuid;
+create unique index if not exists sat_orders_proposal_id_uidx on sat_orders (proposal_id) where proposal_id is not null;
+create index if not exists sat_orders_created_idx on sat_orders (created_at desc);
+create index if not exists sat_events_created_idx on sat_events (created_at desc);
+create index if not exists sat_signals_mint_idx on sat_signals (mint, created_at desc);
+
 alter table sat_candidates enable row level security;
 alter table sat_proposals enable row level security;
 alter table sat_orders enable row level security;
@@ -111,4 +124,5 @@ alter table sat_experiments enable row level security;
 alter table sat_signals enable row level security;
 alter table sat_equity enable row level security;
 alter table sat_meta enable row level security;
+alter table sat_schema_version enable row level security;
 `;

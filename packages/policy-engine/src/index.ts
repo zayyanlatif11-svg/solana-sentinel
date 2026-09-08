@@ -4,6 +4,7 @@ import {
   type PolicyConfig,
   DEFAULT_POLICY_CONFIG,
   nowIso,
+  newId,
   createEvent,
   type SystemEvent,
 } from "@sat/shared";
@@ -72,7 +73,10 @@ export class PolicyEngine {
     }
 
     const text = `${asset.name} ${asset.symbol} ${JSON.stringify(asset.metadata)}`.toLowerCase();
-    const hits = this.config.prohibitedKeywords.filter((k) => text.includes(k.toLowerCase()));
+    const hits = this.config.prohibitedKeywords.filter((k) => {
+      const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
+    });
     if (hits.length > 0 && !this.config.allowProhibitedBusiness) {
       matched.push("prohibited_keywords");
       reasons.push(`Prohibited activity keywords detected: ${hits.join(", ")}`);
@@ -111,6 +115,7 @@ export class PolicyEngine {
     matchedRules: string[],
   ): PolicyAssessment {
     return {
+      id: newId(),
       mint: asset.mint,
       decision,
       reasons,

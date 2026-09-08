@@ -18,6 +18,8 @@ export {
   SIGNAL_MIN_HISTORY,
   validateOhlcvBars,
   barsAsOf,
+  closedBars,
+  INTERVAL_MS,
   simpleReturnPct,
   computeHistoricalMomentum,
   computeHistoricalVolume,
@@ -224,6 +226,32 @@ export function computeOnChain(asset: CandidateAsset): SignalResult {
   };
 }
 
+function pickHistoricalOrSnapshot(hist: SignalResult, snapshot: SignalResult): SignalResult {
+  if (hist.meta?.insufficientData) {
+    return {
+      ...snapshot,
+      meta: {
+        ...snapshot.meta,
+        fallback: "snapshot",
+        historicalInsufficient: true,
+        historicalReason: hist.meta.reason,
+      },
+    };
+  }
+  return hist;
+}
+
+function historicalUsable(historical?: HistoricalBars): boolean {
+  if (!historical) return false;
+  return Boolean(
+    historical["1m"]?.length ||
+      historical["5m"]?.length ||
+      historical["15m"]?.length ||
+      historical["1h"]?.length ||
+      historical["4h"]?.length,
+  );
+}
+
 export function computeAllSignals(
   asset: CandidateAsset,
   universe: CandidateAsset[] = [asset],
@@ -237,13 +265,21 @@ export function computeAllSignals(
     "SOL",
   );
 
-  const useHist = Boolean(historical);
-  const momentum = useHist && historical ? computeHistoricalMomentum(historical) : computeMomentum(asset);
-  const volume = useHist && historical ? computeHistoricalVolume(historical) : computeVolume(asset);
+  const useHist = historicalUsable(historical);
+  const momentum = useHist && historical
+    ? pickHistoricalOrSnapshot(computeHistoricalMomentum(historical), computeMomentum(asset))
+    : computeMomentum(asset);
+  const volume = useHist && historical
+    ? pickHistoricalOrSnapshot(computeHistoricalVolume(historical), computeVolume(asset))
+    : computeVolume(asset);
   const volatility =
-    useHist && historical ? computeHistoricalVolatility(historical) : computeVolatility(asset);
+    useHist && historical
+      ? pickHistoricalOrSnapshot(computeHistoricalVolatility(historical), computeVolatility(asset))
+      : computeVolatility(asset);
   const relativeStrength =
-    useHist && historical ? computeHistoricalRelativeStrength(historical) : snapshotRs;
+    useHist && historical
+      ? pickHistoricalOrSnapshot(computeHistoricalRelativeStrength(historical), snapshotRs)
+      : snapshotRs;
   const trend = historical
     ? computeTrendBreakout(historical)
     : {
@@ -286,11 +322,14 @@ export function scoreOpportunity(
   },
 ): {
   compositeScore: number;
+  gateScore: number;
   components: Record<string, number>;
   explanation: string[];
+  signalSources: Record<string, string>;
 } {
   const byName = Object.fromEntries(signals.map((s) => [s.name, s]));
   const to01 = (n: number) => (n + 1) / 2;
+  const conf = (name: string, fallback = 0.5) => byName[name]?.confidence ?? fallback;
 
   const components: Record<string, number> = {
     momentum: to01(byName.momentum?.normalizedScore ?? 0) * 100,
@@ -305,45 +344,43 @@ export function scoreOpportunity(
   };
 
   const w = opts.weights;
-  const wm = w.momentum ?? 0;
-  const wv = w.volume ?? 0;
-  const wl = w.liquidity ?? 0;
-  const wrs = w.relativeStrength ?? 0;
-  const wrg = w.regime ?? 0;
-  const woc = w.onChain ?? 0;
-  const wtb = w.trendBreakout ?? 0;
-  const wrr = w.riskReward ?? 0;
-  const wr = w.research ?? 0;
-  const cm = components.momentum ?? 0;
-  const cv = components.volume ?? 0;
-  const cl = components.liquidity ?? 0;
-  const crs = components.relativeStrength ?? 0;
-  const crg = components.regime ?? 0;
-  const coc = components.onChain ?? 0;
-  const ctb = components.trendBreakout ?? 0;
-  const crr = components.riskReward ?? 0;
-  const cr = components.research ?? 0;
-
-  const weightSum = wm + wv + wl + wrs + wrg + woc + wtb + wrr + wr;
-
-  const compositeScore =
-    (cm * wm +
-      cv * wv +
-      cl * wl +
-      crs * wrs +
-      crg * wrg +
-      coc * woc +
-      ctb * wtb +
-      crr * wrr +
-      cr * wr) /
-    (weightSum || 1);
-
-  const explanation = [
-    `Composite ${compositeScore.toFixed(1)} using ${opts.strategyConfigVersion}`,
-    `Momentum ${cm.toFixed(0)} (w=${wm})`,
-    `Liquidity ${cl.toFixed(0)} (w=${wl})`,
-    `Risk/reward ${crr.toFixed(0)} (w=${wrr})`,
+  const pairs: Array<[string, number, number, number]> = [
+    ["momentum", w.momentum ?? 0, components.momentum ?? 0, conf("momentum")],
+    ["volume", w.volume ?? 0, components.volume ?? 0, conf("volume")],
+    ["liquidity", w.liquidity ?? 0, components.liquidity ?? 0, conf("liquidity")],
+    ["relativeStrength", w.relativeStrength ?? 0, components.relativeStrength ?? 0, conf("relative_strength")],
+    ["regime", w.regime ?? 0, components.regime ?? 0, conf("market_regime")],
+    ["onChain", w.onChain ?? 0, components.onChain ?? 0, conf("on_chain")],
+    ["trendBreakout", w.trendBreakout ?? 0, components.trendBreakout ?? 0, conf("trend_breakout")],
+    ["riskReward", w.riskReward ?? 0, components.riskReward ?? 0, 1],
+    ["research", w.research ?? 0, components.research ?? 0, 1],
   ];
 
-  return { compositeScore, components, explanation };
+  const weighted = (excludeResearch: boolean) => {
+    let num = 0;
+    let den = 0;
+    for (const [name, weight, value, c] of pairs) {
+      if (excludeResearch && name === "research") continue;
+      const ew = weight * c;
+      num += value * ew;
+      den += ew;
+    }
+    return den > 0 ? num / den : 50;
+  };
+
+  const compositeScore = weighted(false);
+  const gateScore = weighted(true);
+  const signalSources = Object.fromEntries(
+    signals.map((s) => [s.name, String(s.source)]),
+  );
+
+  const explanation = [
+    `Composite ${compositeScore.toFixed(1)} (gate ${gateScore.toFixed(1)}, research excluded from gate) using ${opts.strategyConfigVersion}`,
+    `Momentum ${components.momentum?.toFixed(0)} (w=${w.momentum ?? 0})`,
+    `Trend/breakout ${components.trendBreakout?.toFixed(0)} (w=${w.trendBreakout ?? 0})`,
+    `Liquidity ${components.liquidity?.toFixed(0)} (w=${w.liquidity ?? 0})`,
+    `Risk/reward ${components.riskReward?.toFixed(0)} (w=${w.riskReward ?? 0})`,
+  ];
+
+  return { compositeScore, gateScore, components, explanation, signalSources };
 }

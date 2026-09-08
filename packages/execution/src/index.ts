@@ -6,6 +6,7 @@ import {
   assertNotLiveBroadcast,
   isLiveTradingAllowed,
   type OperatingMode,
+  ExecutionPlanSchema,
 } from "@sat/shared";
 
 export interface ExecutionProvider {
@@ -48,7 +49,7 @@ export class DemoExecutionProvider implements ExecutionProvider {
 
   async plan(quote: ExecutionQuote, mode: OperatingMode): Promise<ExecutionPlan> {
     assertNotLiveBroadcast(mode === "LIVE" ? "LIVE" : "PAPER");
-    return {
+    return ExecutionPlanSchema.parse({
       quote,
       mode: "PAPER",
       canBroadcast: false,
@@ -58,7 +59,7 @@ export class DemoExecutionProvider implements ExecutionProvider {
         `Operating mode: ${mode}`,
       ],
       plannedAt: nowIso(),
-    };
+    });
   }
 }
 
@@ -149,13 +150,13 @@ export class JupiterExecutionProvider implements ExecutionProvider {
           "POST /swap is intentionally not used for live submission in this platform",
           `canBroadcast=false always; isLiveTradingAllowed=${isLiveTradingAllowed()}`,
         ];
-    return {
+    return ExecutionPlanSchema.parse({
       quote,
       mode: "PAPER",
       canBroadcast: false,
       notes,
       plannedAt: nowIso(),
-    };
+    });
   }
 }
 

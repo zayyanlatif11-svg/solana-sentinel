@@ -101,7 +101,17 @@ type StatePayload = {
 async function fetchState(): Promise<StatePayload> {
   const res = await fetch("/api/state", { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load state");
-  return res.json();
+  const s = (await res.json()) as StatePayload;
+  if (s.candidates.length === 0) {
+    const boot = await fetch("/api/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "bootstrap" }),
+    });
+    if (!boot.ok) throw new Error("Failed to bootstrap demo state");
+    return boot.json() as Promise<StatePayload>;
+  }
+  return s;
 }
 
 async function postAction(action: string, extra: Record<string, string> = {}) {
@@ -110,8 +120,8 @@ async function postAction(action: string, extra: Record<string, string> = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, ...extra }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Action failed");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? data.code ?? "Action failed");
   return data;
 }
 

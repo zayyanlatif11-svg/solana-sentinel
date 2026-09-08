@@ -22,7 +22,6 @@ export default defineConfig({
       ...process.env,
       DEMO_MODE: "true",
       OPERATING_MODE: "PAPER",
-      ALLOW_LIVE_TRADING: "false",
       PAPER_FAIL_PROBABILITY: "0",
       PAPER_PARTIAL_PROBABILITY: "0",
       SAT_BIND_HOST: "127.0.0.1",

@@ -25,8 +25,9 @@ import {
 } from "@sat/shared";
 import type { ExperimentResult } from "@sat/experiments";
 import { createInitialPortfolio } from "@sat/portfolio";
-import { STORE_SCHEMA_SQL } from "./schema-sql";
-import type { Database, StoreSnapshot, StoredSignal } from "./types";
+import { STORE_SCHEMA_SQL, STORE_SCHEMA_VERSION } from "./schema-sql";
+import type { Database, StoreSnapshot, StoredSignal, FillUnitOfWork } from "./types";
+import { AlreadyExecutedError } from "./types";
 import { newId } from "@sat/shared";
 
 const { Pool } = pg;
@@ -45,6 +46,7 @@ export class PostgresDatabase implements Database {
   private readonly pool: pg.Pool;
   private ready: Promise<void> | null = null;
   private readonly startingCapital: number;
+  private parseErrorCount = 0;
 
   constructor(
     connectionString: string,
@@ -76,6 +78,11 @@ export class PostgresDatabase implements Database {
       /* app-generated UUIDs; extension is optional */
     }
     await this.pool.query(STORE_SCHEMA_SQL);
+    await this.pool.query(
+      `insert into sat_schema_version (id, version) values (1, $1)
+       on conflict (id) do update set version = excluded.version`,
+      [STORE_SCHEMA_VERSION],
+    );
     const port = await this.pool.query("select payload from sat_portfolio where id = 1");
     if (port.rowCount === 0) {
       const { snapshot, positions } = createInitialPortfolio(this.startingCapital);
@@ -131,31 +138,37 @@ export class PostgresDatabase implements Database {
       this.pool.query("select t, nav from sat_equity order by id asc limit 500"),
     ]);
 
+    this.parseErrorCount = 0;
     const initial = createInitialPortfolio(this.startingCapital).snapshot;
     const parsedPortfolio = PortfolioSnapshotSchema.safeParse(portfolio.rows[0]?.payload);
+    if (portfolio.rows[0] && !parsedPortfolio.success) this.parseErrorCount += 1;
 
     return {
       mode: "postgres",
-      candidates: parseMany(candidates.rows, CandidateAssetSchema),
-      proposals: parseMany(proposals.rows, TradeProposalSchema),
-      orders: parseMany(orders.rows, PaperOrderSchema),
-      positions: parseMany(positions.rows, PositionSchema),
+      candidates: this.parseMany(candidates.rows, CandidateAssetSchema),
+      proposals: this.parseMany(proposals.rows, TradeProposalSchema),
+      orders: this.parseMany(orders.rows, PaperOrderSchema),
+      positions: this.parseMany(positions.rows, PositionSchema),
       portfolio: parsedPortfolio.success ? parsedPortfolio.data : initial,
-      events: parseMany(events.rows, SystemEventSchema),
-      tokenRisk: parseMany(tokenRisk.rows, TokenRiskAssessmentSchema),
-      policies: parseMany(policies.rows, PolicyAssessmentSchema),
-      scores: parseMany(scores.rows, OpportunityScoreSchema),
-      research: parseMany(research.rows, ResearchBriefSchema),
+      events: this.parseMany(events.rows, SystemEventSchema),
+      tokenRisk: this.parseMany(tokenRisk.rows, TokenRiskAssessmentSchema),
+      policies: this.parseMany(policies.rows, PolicyAssessmentSchema),
+      scores: this.parseMany(scores.rows, OpportunityScoreSchema),
+      research: this.parseMany(research.rows, ResearchBriefSchema),
       experiments: experiments.rows.map((r) => r.payload as ExperimentResult),
       signals: signals.rows.flatMap((r) => {
         const parsed = SignalResultSchema.safeParse(r.payload);
-        if (!parsed.success) return [];
+        if (!parsed.success) {
+          this.parseErrorCount += 1;
+          return [];
+        }
         return [{ mint: String(r.mint), ...parsed.data } satisfies StoredSignal];
       }),
       equityHistory: equity.rows.map((r) => ({
         t: r.t instanceof Date ? r.t.toISOString() : String(r.t),
         nav: num(r.nav),
       })),
+      parseErrors: this.parseErrorCount,
     };
   }
 
@@ -238,11 +251,6 @@ export class PostgresDatabase implements Database {
         [ev.id, ev, ev.timestamp],
       );
     }
-    await this.pool.query(
-      `delete from sat_events where id in (
-         select id from sat_events order by created_at desc offset 500
-       )`,
-    );
   }
 
   async addTokenRisk(a: TokenRiskAssessment): Promise<void> {
@@ -314,11 +322,63 @@ export class PostgresDatabase implements Database {
   async pushEquity(nav: number): Promise<void> {
     await this.ensure();
     await this.pool.query("insert into sat_equity (t, nav) values (now(), $1)", [nav]);
-    await this.pool.query(
-      `delete from sat_equity where id in (
-         select id from sat_equity order by id desc offset 500
-       )`,
-    );
+  }
+
+  async consumeProposalAndRecordFill(work: FillUnitOfWork): Promise<void> {
+    await this.ensure();
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      if (work.consumeProposal) {
+        const consumed = await client.query(
+          `update sat_proposals
+             set payload = $1::jsonb
+           where id = $2 and payload->>'status' = 'PROPOSED'
+           returning id`,
+          [work.proposal, work.proposalId],
+        );
+        if ((consumed.rowCount ?? 0) === 0) {
+          throw new AlreadyExecutedError();
+        }
+      }
+      await client.query(
+        `insert into sat_orders (id, mint, payload, created_at, proposal_id)
+         values ($1, $2, $3::jsonb, $4, $5)
+         on conflict (id) do update set payload = excluded.payload`,
+        [
+          work.order.id,
+          work.order.mint,
+          work.order,
+          work.order.createdAt,
+          work.consumeProposal ? work.proposalId : null,
+        ],
+      );
+      await client.query(
+        `insert into sat_portfolio (id, payload) values (1, $1::jsonb)
+         on conflict (id) do update set payload = excluded.payload`,
+        [work.snapshot],
+      );
+      await client.query("delete from sat_positions");
+      for (const row of work.positions) {
+        await client.query(
+          "insert into sat_positions (id, mint, payload, updated_at) values ($1, $2, $3::jsonb, $4)",
+          [row.id, row.mint, row, row.updatedAt],
+        );
+      }
+      for (const ev of work.events) {
+        await client.query(
+          "insert into sat_events (id, payload, created_at) values ($1, $2::jsonb, $3) on conflict (id) do nothing",
+          [ev.id, ev, ev.timestamp],
+        );
+      }
+      await client.query("insert into sat_equity (t, nav) values (now(), $1)", [work.navUsd]);
+      await client.query("commit");
+    } catch (err) {
+      await client.query("rollback");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async reset(startingCapital: number): Promise<void> {
@@ -370,16 +430,17 @@ export class PostgresDatabase implements Database {
   async close(): Promise<void> {
     await this.pool.end();
   }
-}
 
-function parseMany<T>(
-  rows: Array<{ payload: unknown }>,
-  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
-): T[] {
-  const out: T[] = [];
-  for (const row of rows) {
-    const parsed = schema.safeParse(row.payload);
-    if (parsed.success) out.push(parsed.data);
+  private parseMany<T>(
+    rows: Array<{ payload: unknown }>,
+    schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+  ): T[] {
+    const out: T[] = [];
+    for (const row of rows) {
+      const parsed = schema.safeParse(row.payload);
+      if (parsed.success) out.push(parsed.data);
+      else this.parseErrorCount += 1;
+    }
+    return out;
   }
-  return out;
 }

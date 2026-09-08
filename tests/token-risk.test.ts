@@ -170,6 +170,34 @@ describe("token-risk v1.5 fixtures", () => {
     expect(a.details.transferHook).toBe(true);
   });
 
+  it("returns INSUFFICIENT_DATA when required on-chain fields are unknown even if liquidity is rich", () => {
+    const rich = {
+      ...jup,
+      liquidityUsd: 600_000,
+      marketCapUsd: 50_000_000,
+      isDemo: false,
+      dataSources: ["birdeye"],
+    };
+    const a = assessTokenRisk(rich, {
+      tokenProgram: "UNKNOWN",
+      mintAuthority: null,
+      freezeAuthority: null,
+      permanentDelegate: null,
+      transferRestrictions: null,
+      transferHook: null,
+      token2022Extensions: null,
+      topHolderConcentrationPct: null,
+      top5HolderConcentrationPct: null,
+      top10HolderConcentrationPct: null,
+      exitLiquidityUsd: null,
+      estimatedPriceImpactPct: null,
+      metadataQuality: null,
+    });
+    expect(a.riskTier).toBe("INSUFFICIENT_DATA");
+    expect(a.riskReasons[0]).toMatch(/MISSING_REQUIRED/);
+    expect(a.riskTier).not.toBe("LOWER_RISK");
+  });
+
   it("incomplete data prefers INSUFFICIENT_DATA over optimistic defaults", () => {
     const a = assessTokenRisk(
       { ...jup, liquidityUsd: null, tokenAgeHours: null, holderCount: null },

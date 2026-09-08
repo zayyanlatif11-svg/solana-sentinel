@@ -1,13 +1,37 @@
 /**
  * Proportionate CSRF / origin check for mutating POST /api/state.
  * Loopback clients without Origin (curl) are allowed when Host is loopback.
- * Remote bind (0.0.0.0) requires Origin in SAT_ALLOWED_ORIGINS.
+ * Non-loopback bind requires SAT_API_TOKEN (Bearer) in addition to Origin allow-list.
  */
+
+import { z } from "zod";
+import { SolanaAddressSchema } from "@sat/shared";
 
 function loopbackHost(host: string): boolean {
   const h = host.split(":")[0]?.toLowerCase() ?? "";
   return h === "127.0.0.1" || h === "localhost" || h === "[::1]" || h === "::1";
 }
+
+export function bindHost(): string {
+  return (process.env.SAT_BIND_HOST ?? "127.0.0.1").trim() || "127.0.0.1";
+}
+
+export function bindRequiresAuth(): boolean {
+  return !loopbackHost(bindHost());
+}
+
+export const ActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("discover") }),
+  z.object({ action: z.literal("research_pass") }),
+  z.object({ action: z.literal("bootstrap") }),
+  z.object({ action: z.literal("evaluate"), mint: SolanaAddressSchema }),
+  z.object({ action: z.literal("paper_execute"), proposalId: z.string().uuid() }),
+  z.object({ action: z.literal("experiment") }),
+  z.object({ action: z.literal("reset") }),
+  z.object({ action: z.literal("mark") }),
+]);
+
+export type ApiAction = z.infer<typeof ActionSchema>;
 
 export function allowedOrigins(): string[] {
   const extra = (process.env.SAT_ALLOWED_ORIGINS ?? "")
@@ -37,9 +61,22 @@ export function originAllowed(origin: string | null, host: string): boolean {
   return loopbackHost(host);
 }
 
-export function mutatingRequestDenied(req: Request): string | null {
+export function mutatingRequestDenied(req: Request): { error: string; code: string } | null {
+  if (bindRequiresAuth()) {
+    const token = process.env.SAT_API_TOKEN?.trim();
+    if (!token) {
+      return {
+        error: "SAT_API_TOKEN required when SAT_BIND_HOST is not loopback",
+        code: "AUTH_REQUIRED",
+      };
+    }
+    const auth = req.headers.get("authorization");
+    if (auth !== `Bearer ${token}`) {
+      return { error: "Unauthorized", code: "UNAUTHORIZED" };
+    }
+  }
   const host = req.headers.get("host") ?? "";
   const origin = req.headers.get("origin");
   if (originAllowed(origin, host)) return null;
-  return "Cross-origin mutation blocked";
+  return { error: "Cross-origin mutation blocked", code: "CSRF_BLOCKED" };
 }
