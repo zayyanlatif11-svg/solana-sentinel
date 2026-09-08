@@ -31,10 +31,10 @@
 ```text
 pnpm exec vitest run
  Test Files  5 passed (5)
-      Tests  29 passed (29)
+      Tests  31 passed (31)
 ```
 
-Coverage includes: policy/token-risk/risk rejection, signals/scoring, paper fills/stale quotes/costs, prompt-injection guard, live-mode gates, malformed Zod rejection, pipeline E2E duplicate suppression + paper execute.
+Coverage includes: policy/token-risk/risk rejection, signals/scoring, paper fills/stale quotes/costs, prompt-injection guard, live-mode gates (incl. unlock-env still disabled), malformed Zod rejection, pipeline E2E duplicate suppression + paper execute.
 
 ## BUILD RESULTS
 
