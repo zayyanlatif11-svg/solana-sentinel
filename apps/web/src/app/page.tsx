@@ -9,9 +9,14 @@ type Health = {
   canBroadcast: boolean;
   persistence: string;
   demoMode: boolean;
+  publicDemo?: boolean;
+  marketDataProvider?: string;
+  onChainProvider?: string;
+  researchProvider?: string;
+  executionProvider?: string;
   navUsd: number;
   drawdownPct: number;
-  providers: Record<string, string>;
+  providers: Record<string, string | boolean>;
 };
 
 type StatePayload = {
@@ -108,8 +113,10 @@ async function fetchState(): Promise<StatePayload> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "bootstrap" }),
     });
-    if (!boot.ok) throw new Error("Failed to bootstrap demo state");
-    return boot.json() as Promise<StatePayload>;
+    if (boot.ok) return boot.json() as Promise<StatePayload>;
+    const again = await fetch("/api/state", { cache: "no-store" });
+    if (!again.ok) throw new Error("Failed to bootstrap demo state");
+    return again.json() as Promise<StatePayload>;
   }
   return s;
 }
@@ -232,12 +239,12 @@ export default function DashboardPage() {
         <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="anim-fade">
             <p className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
-              Solana research terminal
+              Solana Agentic Trading Research Platform
             </p>
-            <h1 className="brand mt-1 text-3xl text-[var(--text)] md:text-4xl">SAT Research</h1>
+            <h1 className="brand mt-1 text-3xl text-[var(--text)] md:text-4xl">Solana Sentinel</h1>
             <p className="mt-2 max-w-xl text-sm text-[var(--muted)]">
-              Discover assets, score deterministic signals, explain token risk & policy, and
-              simulate paper execution with full provenance.
+              Scan assets, explain signals and token risk, enforce deterministic policy, and
+              simulate paper fills with provenance. Live trading is off.
             </p>
           </div>
           <div className="anim-fade anim-delay-1 flex flex-wrap items-center gap-2">
@@ -256,9 +263,14 @@ export default function DashboardPage() {
             </Pill>
             <Pill tone={data?.health?.persistence === "memory" ? "warn" : "good"}>
               <span data-testid="health-persistence">
-                {data?.health?.persistence ?? "…"} store
+                persistence: {data?.health?.persistence ?? "…"}
               </span>
             </Pill>
+            {data?.health?.publicDemo ? (
+              <Pill tone="demo">
+                <span data-testid="health-public-demo">PUBLIC DEMO</span>
+              </Pill>
+            ) : null}
             <span className="live-dot ml-2 h-2 w-2 rounded-full bg-[var(--accent)]" />
           </div>
         </div>
@@ -353,6 +365,8 @@ export default function DashboardPage() {
                   <li>Research: {data.health.providers.research}</li>
                 </ul>
                 <div className="mt-4 flex flex-wrap gap-2">
+                  {!data.health.publicDemo && (
+                    <>
                   <button
                     className="border border-[var(--line)] bg-[var(--bg-2)] px-3 py-1.5 text-xs hover:border-[var(--accent)]"
                     disabled={pending}
@@ -377,6 +391,8 @@ export default function DashboardPage() {
                   >
                     Reset demo
                   </button>
+                    </>
+                  )}
                 </div>
                 {msg && (
                   <p className="mt-3 text-xs text-[var(--accent-2)]" data-testid="action-msg">
@@ -468,6 +484,7 @@ export default function DashboardPage() {
                             data-testid="btn-paper-execute"
                             disabled={
                               pending ||
+                              Boolean(data.health.publicDemo) ||
                               selectedProposal.status === "REJECTED" ||
                               selectedProposal.status === "ACCEPTED_PAPER" ||
                               data.operatingMode === "READ_ONLY"
@@ -689,8 +706,8 @@ export default function DashboardPage() {
       </main>
 
       <footer className="border-t border-[var(--line)] px-4 py-6 text-center text-xs text-[var(--muted)]">
-        SAT Research · READ_ONLY + PAPER · Policy engine is user-configured, not a fatwa authority ·
-        Never &quot;SAFE&quot; — risk tiers start at LOWER_RISK
+        Solana Sentinel · PAPER · LIVE OFF · canBroadcast=false · Not investment advice ·
+        Risk tiers never use SAFE
       </footer>
     </div>
   );

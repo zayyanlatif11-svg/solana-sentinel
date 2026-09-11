@@ -20,6 +20,17 @@ export interface ExecutionProvider {
   plan(quote: ExecutionQuote, mode: OperatingMode): Promise<ExecutionPlan>;
 }
 
+const FORBIDDEN_JUPITER_PATHS = ["/execute", "/submit", "/swap/v2/execute"];
+
+export function assertQuoteOnlyJupiterUrl(url: string): void {
+  const lower = url.toLowerCase();
+  for (const banned of FORBIDDEN_JUPITER_PATHS) {
+    if (lower.includes(banned)) {
+      throw new Error(`Forbidden Jupiter execution path: ${banned}`);
+    }
+  }
+}
+
 export class DemoExecutionProvider implements ExecutionProvider {
   readonly name = "demo-jupiter";
 
@@ -63,20 +74,38 @@ export class DemoExecutionProvider implements ExecutionProvider {
   }
 }
 
+function resolveQuoteEndpoint(apiBase: string): { url: string; style: "v2-order" | "v1-quote" } {
+  const base = apiBase.replace(/\/$/, "");
+  if (base.includes("/swap/v2")) return { url: `${base}/order`, style: "v2-order" };
+  return { url: `${base}/quote`, style: "v1-quote" };
+}
+
+function labelsFromRoutePlan(raw: Record<string, unknown>): string[] {
+  const plan = raw.routePlan;
+  if (!Array.isArray(plan)) return [];
+  return plan
+    .map((step) => {
+      if (!step || typeof step !== "object") return null;
+      const info = (step as { swapInfo?: { label?: unknown } }).swapInfo;
+      return typeof info?.label === "string" ? info.label : null;
+    })
+    .filter((x): x is string => Boolean(x));
+}
+
 /**
- * Jupiter Swap API v1 adapter (quote + plan only; never broadcasts).
- * Lite: https://lite-api.jup.ag/swap/v1
- * Pro:  https://api.jup.ag/swap/v1
- * Docs: https://dev.jup.ag/docs/api-reference/swap/v1/quote
+ * Jupiter quote/route adapter. Quote and plan only. Never broadcasts.
+ * Default: Swap API v2 GET /swap/v2/order. Legacy: GET /swap/v1/quote.
  */
 export class JupiterExecutionProvider implements ExecutionProvider {
-  readonly name = "jupiter-v1";
+  readonly name: string;
 
   constructor(
-    private readonly apiBase = process.env.JUPITER_API_BASE ?? "https://lite-api.jup.ag/swap/v1",
+    private readonly apiBase = process.env.JUPITER_API_BASE ?? "https://api.jup.ag/swap/v2",
     private readonly apiKey = process.env.JUPITER_API_KEY,
     private readonly fallback = new DemoExecutionProvider(),
-  ) {}
+  ) {
+    this.name = this.apiBase.includes("/swap/v2") ? "jupiter-v2" : "jupiter-v1";
+  }
 
   private headers(): Record<string, string> {
     const h: Record<string, string> = { Accept: "application/json" };
@@ -90,51 +119,45 @@ export class JupiterExecutionProvider implements ExecutionProvider {
     amount: string;
     slippageBps?: number;
   }): Promise<ExecutionQuote> {
-    try {
-      const slippageBps = params.slippageBps ?? 50;
-      const qs = new URLSearchParams({
-        inputMint: params.inputMint,
-        outputMint: params.outputMint,
-        amount: params.amount,
-        slippageBps: String(slippageBps),
-      });
-      const res = await fetch(`${this.apiBase}/quote?${qs}`, {
-        headers: this.headers(),
-      });
-      if (!res.ok) throw new Error(`Jupiter quote HTTP ${res.status}`);
-      const raw = (await res.json()) as {
-        inputMint: string;
-        outputMint: string;
-        inAmount: string;
-        outAmount: string;
-        otherAmountThreshold?: string;
-        priceImpactPct?: string | number;
-        slippageBps?: number;
-        routePlan?: Array<{ swapInfo?: { label?: string } }>;
-      };
-      const routeLabels =
-        raw.routePlan
-          ?.map((r) => r.swapInfo?.label)
-          .filter((x): x is string => Boolean(x)) ?? [];
-      return {
-        inputMint: raw.inputMint,
-        outputMint: raw.outputMint,
-        inAmount: raw.inAmount,
-        outAmount: raw.outAmount,
-        otherAmountThreshold: raw.otherAmountThreshold,
-        priceImpactPct:
-          raw.priceImpactPct == null ? null : Number(raw.priceImpactPct),
-        slippageBps: raw.slippageBps ?? slippageBps,
-        routeLabels,
-        feeEstimateUsd: null,
-        provider: "jupiter",
-        raw,
-        quotedAt: nowIso(),
-        isDemo: false,
-      };
-    } catch {
-      return this.fallback.quote(params);
+    const slippageBps = params.slippageBps ?? 50;
+    const attempts = [this.apiBase];
+    if (!this.apiBase.includes("/swap/v1")) attempts.push("https://api.jup.ag/swap/v1");
+    for (const base of attempts) {
+      try {
+        const { url } = resolveQuoteEndpoint(base);
+        assertQuoteOnlyJupiterUrl(url);
+        const qs = new URLSearchParams({
+          inputMint: params.inputMint,
+          outputMint: params.outputMint,
+          amount: params.amount,
+          slippageBps: String(slippageBps),
+        });
+        const res = await fetch(`${url}?${qs}`, { headers: this.headers() });
+        if (!res.ok) throw new Error(`Jupiter quote HTTP ${res.status}`);
+        const raw = (await res.json()) as Record<string, unknown>;
+        const outAmount = String(raw.outAmount ?? "");
+        if (!outAmount) throw new Error("Jupiter quote missing outAmount");
+        return {
+          inputMint: String(raw.inputMint ?? params.inputMint),
+          outputMint: String(raw.outputMint ?? params.outputMint),
+          inAmount: String(raw.inAmount ?? params.amount),
+          outAmount,
+          otherAmountThreshold:
+            raw.otherAmountThreshold != null ? String(raw.otherAmountThreshold) : undefined,
+          priceImpactPct: raw.priceImpactPct == null ? null : Number(raw.priceImpactPct),
+          slippageBps: typeof raw.slippageBps === "number" ? raw.slippageBps : slippageBps,
+          routeLabels: labelsFromRoutePlan(raw),
+          feeEstimateUsd: null,
+          provider: "jupiter",
+          raw,
+          quotedAt: nowIso(),
+          isDemo: false,
+        };
+      } catch {
+        continue;
+      }
     }
+    return this.fallback.quote(params);
   }
 
   async plan(quote: ExecutionQuote, mode: OperatingMode): Promise<ExecutionPlan> {
@@ -146,8 +169,8 @@ export class JupiterExecutionProvider implements ExecutionProvider {
           `Operating mode: ${mode}`,
         ]
       : [
-          "Jupiter quote/plan only — serialized swap is NOT requested for broadcast",
-          "POST /swap is intentionally not used for live submission in this platform",
+          `Jupiter ${this.name} quote/route only — no transaction submission`,
+          "/execute, /submit, and sendTransaction are not implemented",
           `canBroadcast=false always; isLiveTradingAllowed=${isLiveTradingAllowed()}`,
         ];
     return ExecutionPlanSchema.parse({

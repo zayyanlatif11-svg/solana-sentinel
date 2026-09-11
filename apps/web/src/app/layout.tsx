@@ -21,9 +21,9 @@ const serif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "SAT Research — Solana Agentic Trading Research",
+  title: "Solana Sentinel — Solana Agentic Trading Research Platform",
   description:
-    "Paper-only Solana agentic trading research terminal. Discovery, signals, token-risk, policy, and simulated execution.",
+    "Paper-only Solana research and paper-trading terminal. Deterministic risk, historical signals, provenance, no live broadcast.",
 };
 
 export default function RootLayout({

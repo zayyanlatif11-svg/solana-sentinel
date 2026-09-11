@@ -1,8 +1,8 @@
-# HANDOFF — Solana Agentic Trading Research Platform
+# HANDOFF — Solana Sentinel
 
 ## STATUS
 
-**V1.5 PAPER/DEMO research platform** — audited V1 architecture preserved; live broadcast still hard-disabled. Postgres persistence is implemented and verified against local PostgreSQL 16 when `DATABASE_URL` is set. Default runtime without that URL remains labeled in-memory.
+**V2 PAPER/DEMO research platform** — audited V1 architecture preserved; live broadcast still hard-disabled. Postgres persistence is implemented and verified against local PostgreSQL 16 when `DATABASE_URL` is set. Default runtime without that URL remains labeled in-memory.
 
 ## WHAT WAS BUILT
 
@@ -23,7 +23,7 @@
 | Persistence | memory unless `DATABASE_URL` is set |
 | Market data | DEMO default (Birdeye OHLCV v3 if keyed) |
 | On-chain | DEMO default (Helius DAS + largest-accounts if keyed) |
-| Execution | Jupiter Swap API v1 `/quote`; demo fallback; never broadcast |
+| Execution | Jupiter Swap API v2 `/order` quote/route (v1 `/quote` fallback); never broadcast |
 | Research LLM | Mock default |
 
 ## TEST RESULTS
@@ -54,6 +54,6 @@ See [docs/limitations.md](./docs/limitations.md).
 ---
 
 **Mode:** PAPER · LIVE broadcasting disabled  
-**Branch:** `cursor/audit-safety-gates-d1d1`  
+**Branch:** `v2-goal-mode` (merge to `main`)  
 **Audit:** [docs/AUDIT-GROK.md](./docs/AUDIT-GROK.md)  
 **V1.5:** [docs/V1.5-HANDOFF.md](./docs/V1.5-HANDOFF.md)

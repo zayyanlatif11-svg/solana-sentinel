@@ -183,14 +183,16 @@ export type OpportunityScore = z.infer<typeof OpportunityScoreSchema>;
 export const ResearchBriefSchema = z.object({
   id: z.string().uuid().optional(),
   mint: SolanaAddressSchema,
-  thesis: z.string(),
-  catalysts: z.array(z.string()),
-  contradictions: z.array(z.string()),
+  thesis: z.string().max(2000),
+  catalysts: z.array(z.string().max(280)).max(8),
+  contradictions: z.array(z.string().max(280)).max(8),
   confidence: z.number().min(0).max(1),
-  sources: z.array(z.string()),
+  sources: z.array(z.string()).max(16),
   isMock: z.boolean(),
   generatedAt: z.string().datetime(),
   model: z.string().optional(),
+  provider: z.string().optional(),
+  inputSnapshotRef: z.string().max(512).optional(),
 });
 export type ResearchBrief = z.infer<typeof ResearchBriefSchema>;
 
@@ -466,4 +468,10 @@ export function assertNotLiveBroadcast(mode: OperatingMode): void {
  */
 export function isLiveTradingAllowed(): boolean {
   return false;
+}
+
+/** Public portfolio demo: anonymous users are read-only. */
+export function isPublicDemo(): boolean {
+  const v = (process.env.PUBLIC_DEMO ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
 }

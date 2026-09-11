@@ -12,6 +12,7 @@ import {
   nowIso,
   createEvent,
   isLiveTradingAllowed,
+  isPublicDemo,
   ExecutionPlanSchema,
   PROPOSAL_TTL_MS,
 } from "@sat/shared";
@@ -438,15 +439,26 @@ export async function runDemoExperiment(db: Database = getDatabase()) {
 
 export async function getSystemHealth(db: Database = getDatabase()) {
   const state = await db.getState();
-  const { market, onchain, execution } = getProviders();
+  const { market, onchain, execution, research } = getProviders();
   const demoMode = market.isDemo || onchain.isDemo || Boolean(state.candidates.find((c) => c.isDemo));
+  const lastDiscovery = state.events.find((e) => e.type === "TOKEN_DISCOVERED")?.timestamp ?? null;
+  const lastPaper = state.orders[0]?.createdAt ?? null;
   return {
     operatingMode: getOperatingMode(),
     liveTradingAllowed: isLiveTradingAllowed(),
     canBroadcast: false as const,
     persistence: db.mode,
+    databaseStatus: db.mode === "postgres" ? "postgres" : "memory",
     parseErrors: state.parseErrors,
     demoMode,
+    publicDemo: isPublicDemo(),
+    marketDataProvider: market.name,
+    onChainProvider: onchain.name,
+    researchProvider: process.env.OPENAI_API_KEY ? "openai-compatible" : "mock",
+    executionProvider: execution.name,
+    lastDiscoveryRun: lastDiscovery,
+    lastPaperExecution: lastPaper,
+    lastEvaluationRun: state.proposals[0]?.createdAt ?? null,
     candidates: state.candidates.length,
     proposals: state.proposals.length,
     openPositions: state.positions.length,
@@ -462,6 +474,7 @@ export async function getSystemHealth(db: Database = getDatabase()) {
       execution: execution.name,
       research: process.env.OPENAI_API_KEY ? "openai-compatible" : "mock",
       researchIsMock: !process.env.OPENAI_API_KEY,
+      researchName: research.constructor?.name ?? "research",
     },
   };
 }

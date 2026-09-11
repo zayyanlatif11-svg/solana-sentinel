@@ -168,5 +168,6 @@ export async function closeDatabaseForTests(): Promise<void> {
   singleton = null;
 }
 
-export { PostgresDatabase, AlreadyExecutedError };
+export { PostgresDatabase, buildPoolConfig } from "./postgres";
+export { AlreadyExecutedError };
 export { STORE_SCHEMA_SQL, STORE_SCHEMA_VERSION } from "./schema-sql";

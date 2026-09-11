@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import { SolanaAddressSchema } from "@sat/shared";
+import { SolanaAddressSchema, isPublicDemo } from "@sat/shared";
 
 function loopbackHost(host: string): boolean {
   const h = host.split(":")[0]?.toLowerCase() ?? "";
@@ -61,7 +61,19 @@ export function originAllowed(origin: string | null, host: string): boolean {
   return loopbackHost(host);
 }
 
+export function operatorAuthorized(req: Request): boolean {
+  const token = process.env.SAT_API_TOKEN?.trim();
+  if (!token) return false;
+  return req.headers.get("authorization") === `Bearer ${token}`;
+}
+
 export function mutatingRequestDenied(req: Request): { error: string; code: string } | null {
+  if (isPublicDemo() && !operatorAuthorized(req)) {
+    return {
+      error: "Public demo is read-only. Authenticated operator token required to mutate.",
+      code: "PUBLIC_DEMO_READONLY",
+    };
+  }
   if (bindRequiresAuth()) {
     const token = process.env.SAT_API_TOKEN?.trim();
     if (!token) {
@@ -70,8 +82,7 @@ export function mutatingRequestDenied(req: Request): { error: string; code: stri
         code: "AUTH_REQUIRED",
       };
     }
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${token}`) {
+    if (!operatorAuthorized(req)) {
       return { error: "Unauthorized", code: "UNAUTHORIZED" };
     }
   }

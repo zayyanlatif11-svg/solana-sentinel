@@ -32,6 +32,22 @@ import { newId } from "@sat/shared";
 
 const { Pool } = pg;
 
+/** Hosted Supabase / sslmode=require get TLS. Local CI URLs stay plaintext. */
+export function buildPoolConfig(connectionString: string): pg.PoolConfig {
+  const hosted =
+    /supabase\.(co|com)/i.test(connectionString) ||
+    /sslmode=(require|verify-ca|verify-full)/i.test(connectionString) ||
+    process.env.DATABASE_SSL === "true";
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
+  return {
+    connectionString,
+    max: Number(process.env.DATABASE_POOL_MAX ?? 8),
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 8_000,
+    ssl: hosted ? { rejectUnauthorized } : undefined,
+  };
+}
+
 function num(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v !== "") {
@@ -53,12 +69,7 @@ export class PostgresDatabase implements Database {
     startingCapital = Number(process.env.PAPER_STARTING_CAPITAL_USD ?? 100_000),
   ) {
     this.startingCapital = startingCapital;
-    this.pool = new Pool({
-      connectionString,
-      max: 8,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 8_000,
-    });
+    this.pool = new Pool(buildPoolConfig(connectionString));
     this.pool.on("error", (err) => {
       console.error("sat postgres pool error", err.message);
     });

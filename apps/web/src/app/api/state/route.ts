@@ -11,6 +11,7 @@ import {
   markToMarket,
 } from "@sat/pipeline";
 import { ActionSchema, mutatingRequestDenied } from "@/lib/request-guard";
+import { isPublicDemo } from "@sat/shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,12 @@ function jsonError(error: string, code: string, status: number) {
 
 export async function GET() {
   const db = getDatabase();
-  const state = await db.getState();
+  let state = await db.getState();
+  if (isPublicDemo() && state.candidates.length === 0) {
+    await runFullResearchPass(db);
+    if ((await db.getState()).experiments.length === 0) await runDemoExperiment(db);
+    state = await db.getState();
+  }
   return NextResponse.json({
     ...state,
     health: await getSystemHealth(db),
