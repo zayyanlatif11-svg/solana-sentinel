@@ -170,7 +170,7 @@ export class JupiterExecutionProvider implements ExecutionProvider {
         ]
       : [
           `Jupiter ${this.name} quote/route only — no transaction submission`,
-          "/execute, /submit, and sendTransaction are not implemented",
+          "Quote and route only. On-chain submission is not implemented",
           `canBroadcast=false always; isLiveTradingAllowed=${isLiveTradingAllowed()}`,
         ];
     return ExecutionPlanSchema.parse({
